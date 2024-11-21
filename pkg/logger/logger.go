@@ -27,20 +27,13 @@ type Logger struct {
 
 func InitializeLoggers(logLevel string, logFilepath string) {
 	setLogLevel(logLevel)
-	defaultLogPath := "../core.log"
 	var err error
 	var logFile *os.File
 	if logFilepath != "" {
 		logFile, err = openLogFile(logFilepath)
 	}
-	if err != nil {
-		fmt.Printf("ERROR: Can't open/create file %s. Trying default log file.\n", logFilepath)
-	}
 	if err != nil || logFilepath == "" {
-		logFile, err = openLogFile(defaultLogPath)
-	}
-	if err != nil {
-		fmt.Printf("ERROR: Can't open/create default config file %s redirecting logs to stdout\n", defaultLogPath)
+		fmt.Printf("ERROR: Can't open/create file %s. Redirecting logs to stdout.\n", logFilepath)
 		logFile = os.Stdout
 	}
 	l.debugLogger = log.New(logFile, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile)
