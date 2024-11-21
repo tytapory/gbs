@@ -55,6 +55,8 @@ type CoreConfig struct {
 	CoreFee int `json:"fee"`
 }
 
+var fileOpenFunc = os.Open
+
 func GetConfig() Config {
 	if cfg == nil {
 		logger.Debug("Config is not cached, caching now...")
@@ -66,7 +68,7 @@ func GetConfig() Config {
 	return *cfg
 }
 
-func loadConfig() {
+var loadConfig = func() {
 	logger.Info("Loading config")
 	err := loadConfigFromFile("config.json")
 	if err == nil {
@@ -80,9 +82,9 @@ func loadConfig() {
 	logger.Fatal(fmt.Sprintf("Can't open default config: %s", err.Error()))
 }
 
-func loadConfigFromFile(filename string) error {
+var loadConfigFromFile = func(filename string) error {
 	logger.Debug(fmt.Sprintf("Attempting to load configuration from '%s'", filename))
-	file, err := os.Open(filename)
+	file, err := fileOpenFunc(filename)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("Could not open file '%s': %v", filename, err))
 		return err
@@ -90,14 +92,14 @@ func loadConfigFromFile(filename string) error {
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&cfg); err != nil {
-		logger.Error(fmt.Sprintf("Failed to decode JSON from file '%s': %s\n", filename, err.Error()))
+		logger.Error(fmt.Sprintf("Failed to decode JSON from file '%s': %s", filename, err.Error()))
 		return err
 	}
-	logger.Debug(fmt.Sprintf("Successfully decoded configuration from '%s'\n", filename))
+	logger.Debug(fmt.Sprintf("Successfully decoded configuration from '%s'", filename))
 	return nil
 }
 
-func loadEnv() {
+var loadEnv = func() {
 	logger.Info("Loading JWT secret key")
 	jwtSecret, exists := os.LookupEnv("GBS_JWT_KEY")
 	if exists {
@@ -121,7 +123,7 @@ func loadEnv() {
 	cfg.Security.JwtSecret = jwtSecret
 }
 
-func createEnvFile() {
+var createEnvFile = func() {
 	file, err := os.Create(".env")
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Can't create .env file: %s", err.Error()))
