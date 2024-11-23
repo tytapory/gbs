@@ -70,12 +70,12 @@ func GetConfig() Config {
 
 var loadConfig = func() {
 	logger.Info("Loading config")
-	err := loadConfigFromFile("config.json")
+	err := loadConfigFromFile("../../config/config.json")
 	if err == nil {
 		return
 	}
 	logger.Warn(fmt.Sprintf("Can't open user config, trying to open default config: %s", err.Error()))
-	err = loadConfigFromFile("default-config.json")
+	err = loadConfigFromFile("../../config/default-config.json")
 	if err == nil {
 		return
 	}

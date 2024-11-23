@@ -59,7 +59,7 @@ func TestLoadConfigUserConfigExist(t *testing.T) {
 		cfg = nil
 	}()
 	loadConfigFromFile = func(filename string) error {
-		if filename == "config.json" {
+		if filename == "../../config/config.json" {
 			cfg = &Config{
 				Server: ServerConfig{
 					Host: "test_host_user_config",

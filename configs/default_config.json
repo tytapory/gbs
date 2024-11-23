@@ -1,0 +1,31 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": "5432",
+    "user": "postgres",
+    "password": "postgres",
+    "dbname": "gbs_default",
+    "sslmode": "disable"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": "8080"
+  },
+  "logging": {
+    "level": "INFO"
+  },
+  "security": {
+    "token_expiry": "15m",
+    "refresh_token_expiry": "7d",
+    "lockout_duration": "30m",
+    "login_min_length": 5,
+    "login_max_length": 50,
+    "password_min_length": 8,
+    "password_max_length": 128,
+    "max_login_attempts": 5
+  },
+  "core": {
+    "fee": 100
+  }
+}
+
