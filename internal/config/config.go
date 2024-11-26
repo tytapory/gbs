@@ -55,6 +55,7 @@ type CoreConfig struct {
 	CoreFee int `json:"fee"`
 }
 
+var dotEnvLocation = "../../configs/.env"
 var fileOpenFunc = os.Open
 
 func GetConfig() Config {
@@ -107,13 +108,13 @@ var loadEnv = func() {
 		cfg.Security.JwtSecret = jwtSecret
 		return
 	}
-	if _, err := os.Stat(".env"); os.IsNotExist(err) {
+	if _, err := os.Stat(dotEnvLocation); os.IsNotExist(err) {
 		logger.Warn(fmt.Sprintf(".env file does not exist. This is okay if it's first launch: %s", err.Error()))
 		logger.Info("Trying to create new .env file and new key")
 		createEnvFile()
 	}
 	logger.Info("Opening .env file")
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(dotEnvLocation); err != nil {
 		logger.Fatal(fmt.Sprintf("Can't load .env: %s", err.Error()))
 	}
 	jwtSecret, exists = os.LookupEnv("GBS_JWT_SECRET")
@@ -124,7 +125,7 @@ var loadEnv = func() {
 }
 
 var createEnvFile = func() {
-	file, err := os.Create(".env")
+	file, err := os.Create(dotEnvLocation)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Can't create .env file: %s", err.Error()))
 	}
