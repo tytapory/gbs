@@ -48,30 +48,6 @@ CREATE TABLE recovery_code(
 
 CREATE INDEX IF NOT EXISTS recovery_code_user_id_idx ON recovery_code(user_id);
 
-CREATE TABLE transaction_logs(
-  id serial PRIMARY KEY,
-  sender_id integer NOT NULL REFERENCES users(id),
-  receiver_id integer NOT NULL REFERENCES users(id),
-  initiator_id integer NOT NULL REFERENCES users(id),
-  transaction_status integer REFERENCES error_description(code),
-  sender_balance_after bigint NOT NULL,
-  receiver_balance_after bigint NOT NULL,
-  currency varchar(64) NOT NULL,
-  amount bigint NOT NULL,
-  created_at timestamp NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS transfer_logs_sender_id_idx ON transfer_logs(sender_id);
-
-CREATE INDEX IF NOT EXISTS transfer_logs_receiver_id_idx ON transfer_logs(receiver_id);
-
-CREATE INDEX IF NOT EXISTS transfer_logs_currency_idx ON transfer_logs(currency);
-
-CREATE INDEX IF NOT EXISTS transfer_logs_created_at_idx ON transfer_logs(created_at);
-
-CREATE INDEX IF NOT EXISTS transfer_logs_sender_receiver_idx ON
-  transfer_logs(sender_id, receiver_id);
-
 CREATE TABLE error_description(
   code integer PRIMARY KEY,
   description text NOT NULL
@@ -85,6 +61,34 @@ INSERT INTO error_description(code, description)
 (104, 'Transaction: Insufficient funds'),
 (105, 'Transaction: Amount less than or equal to zero');
 
+CREATE TABLE transaction_logs(
+  id serial PRIMARY KEY,
+  sender_id integer NOT NULL REFERENCES users(id),
+  receiver_id integer NOT NULL REFERENCES users(id),
+  initiator_id integer NOT NULL REFERENCES users(id),
+  transaction_status integer REFERENCES error_description(code),
+  sender_balance_after bigint DEFAULT 0,
+  receiver_balance_after bigint DEFAULT 0,
+  currency varchar(64) NOT NULL,
+  amount bigint NOT NULL,
+  fee bigint NOT NULL,
+  created_at timestamp NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS transaction_logs_sender_id_idx ON
+  transaction_logs(sender_id);
+
+CREATE INDEX IF NOT EXISTS transaction_logs_receiver_id_idx ON
+  transaction_logs(receiver_id);
+
+CREATE INDEX IF NOT EXISTS transaction_logs_currency_idx ON transaction_logs(currency);
+
+CREATE INDEX IF NOT EXISTS transaction_logs_created_at_idx ON
+  transaction_logs(created_at);
+
+CREATE INDEX IF NOT EXISTS transaction_logs_sender_receiver_idx ON
+  transaction_logs(sender_id, receiver_id);
+
 INSERT INTO permissions(name)
   VALUES ('administrator'),
 ('manage_user_permissions'), --TODO
@@ -95,6 +99,15 @@ INSERT INTO permissions(name)
 ('receive_funds'),
 ('send_funds');
 
+INSERT INTO users(username)
+  VALUES ('adm'),
+('fees'),
+('registration');
+
+INSERT INTO user_permission(user_id, permission_id)
+  VALUES (1, 1),
+(3, 4);
+
 CREATE OR REPLACE FUNCTION log_transaction(
   sender_id integer,
   receiver_id integer,
@@ -103,16 +116,17 @@ CREATE OR REPLACE FUNCTION log_transaction(
   sender_balance_after bigint,
   receiver_balance_after bigint,
   currency varchar(64),
-  amount bigint
+  amount bigint,
+  fee bigint
 )
   RETURNS void
   AS $$
 BEGIN
   INSERT INTO transaction_logs(sender_id, receiver_id, initiator_id,
     transaction_status, sender_balance_after, receiver_balance_after, currency,
-    amount)
+    amount, fee)
     VALUES(sender_id, receiver_id, initiator_id, transaction_status,
-      sender_balance_after, receiver_balance_after, currency, amount);
+      sender_balance_after, receiver_balance_after, currency, amount, fee);
 END;
 $$
 LANGUAGE plpgsql;
@@ -176,7 +190,8 @@ CREATE OR REPLACE FUNCTION proceed_transaction(
   receiver_id integer,
   initiator_id integer,
   currency_param varchar(64),
-  amount_param bigint
+  amount_param bigint,
+  fee integer
 )
   RETURNS integer
   AS $$
@@ -184,6 +199,7 @@ DECLARE
   sender_balance bigint;
   receiver_balance bigint;
   status_code integer;
+  commission_amount bigint;
 BEGIN
   SELECT
     balances.amount INTO sender_balance
@@ -205,34 +221,51 @@ BEGIN
 
   status_code := check_transaction_permissions(initiator_id, sender_id, receiver_id);
   IF status_code <> 100 THEN
-    SELECT
+    PERFORM
       log_transaction(sender_id, receiver_id, initiator_id, status_code,
-	sender_balance, receiver_balance, currency, amount);
+	sender_balance, receiver_balance, currency_param, amount_param, 0);
     RETURN status_code;
     -- some permission error
   END IF;
 
   IF sender_balance < amount_param OR sender_balance IS NULL THEN
-    SELECT
-      log_transaction(sender_id, receiver_id, initiator_id, 4, sender_balance,
-	receiver_balance, currency, amount);
+    PERFORM
+      log_transaction(sender_id, receiver_id, initiator_id, 104, sender_balance,
+	receiver_balance, currency_param, amount_param, 0);
     RETURN 104;
     -- insufficient funds
   END IF;
 
   IF amount_param <= 0 THEN
-    SELECT
-      log_transaction(sender_id, receiver_id, initiator_id, 5, sender_balance,
-	receiver_balance, currency, amount);
+    PERFORM
+      log_transaction(sender_id, receiver_id, initiator_id, 105, sender_balance,
+	receiver_balance, currency_param, amount_param, 0);
     RETURN 105;
     -- transaction amount less than 0
   END IF;
 
+  commission_amount := (amount_param * fee + 9999) / 10000;
   INSERT INTO balances(user_id, currency, amount)
-    VALUES (receiver_id, currency_param, amount_param)
+    VALUES (receiver_id, currency_param, amount_param - commission_amount)
   ON CONFLICT (user_id, currency)
     DO UPDATE SET
       amount = balances.amount + EXCLUDED.amount;
+
+  PERFORM
+    amount
+  FROM
+    balances
+  WHERE
+    user_id = 2
+    AND currency = currency_param
+  FOR UPDATE;
+
+  INSERT INTO balances(user_id, currency, amount)
+    VALUES (2, currency_param, commission_amount)
+  ON CONFLICT (user_id, currency)
+    DO UPDATE SET
+      amount = commission_amount + EXCLUDED.amount;
+
   UPDATE
     balances
   SET
@@ -240,9 +273,25 @@ BEGIN
   WHERE
     user_id = sender_id
     AND currency = currency_param;
+
   SELECT
-    log_transaction(sender_id, receiver_id, initiator_id, 0, sender_balance,
-      receiver_balance, currency, amount);
+    balances.amount INTO receiver_balance
+  FROM
+    balances
+  WHERE
+    balances.user_id = receiver_id
+    AND balances.currency = currency_param;
+  SELECT
+    balances.amount INTO sender_balance
+  FROM
+    balances
+  WHERE
+    balances.user_id = sender_id
+    AND balances.currency = currency_param;
+
+  PERFORM
+    log_transaction(sender_id, receiver_id, initiator_id, 100, sender_balance,
+      receiver_balance, currency_param, amount_param, commission_amount);
   RETURN 100;
   -- all good
 END;
