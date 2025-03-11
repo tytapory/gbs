@@ -1,7 +1,7 @@
 CREATE TABLE users(
   id serial PRIMARY KEY,
   username varchar(64) NOT NULL UNIQUE,
-  password_hash varchar(64),
+  password_hash char(60),
   created_at timestamp NOT NULL DEFAULT NOW()
 );
 
@@ -465,3 +465,21 @@ ON CONFLICT (user_id, currency)
 END;
 $$
 LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION register_user(username text, password_hash char(60))
+RETURNS integer AS $$
+DECLARE
+    new_user_id integer;
+BEGIN
+    IF EXISTS (SELECT 1 FROM users WHERE users.username = register_user.username) THEN
+        RETURN NULL;
+    END IF;
+
+    INSERT INTO users (username, user_hash)
+    VALUES (register_user.username, register_user.password_hash)
+    RETURNING id INTO new_user_id;
+
+    RETURN new_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
