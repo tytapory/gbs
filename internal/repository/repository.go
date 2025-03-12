@@ -32,7 +32,7 @@ func InitDB() {
 	logger.Info("Successfully connected to the database")
 }
 
-var getUserIdHash = func(username string) (int, string, error) {
+var GetUserIDHash = func(username string) (int, string, error) {
 	var userID int
 	var passwordHash string
 
@@ -49,7 +49,7 @@ var getUserIdHash = func(username string) (int, string, error) {
 	return userID, passwordHash, nil
 }
 
-var registerUser = func(username string, passwordHash string) (int, error) {
+var RegisterUser = func(username string, passwordHash string) (int, error) {
 	var userID int
 
 	err := db.QueryRow("SELECT id FROM register_user($1, $2)", username, passwordHash).Scan(&userID)
