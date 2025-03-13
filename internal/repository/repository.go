@@ -167,7 +167,15 @@ var GetTransactionsHistory = func(initiatorID, userID, limit, offset int) ([]mod
 	defer rows.Close()
 	for rows.Next() {
 		var transaction models.Transaction
-		err = rows.Scan(&transaction.Currency, &transaction.Amount)
+		err = rows.Scan(
+			&transaction.SenderID,
+			&transaction.ReceiverID,
+			&transaction.Initiator,
+			&transaction.Currency,
+			&transaction.Amount,
+			&transaction.Fee,
+			&transaction.CreatedAt,
+		)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
 			return transactions, fmt.Errorf("Internal server error", err.Error())

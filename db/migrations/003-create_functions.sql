@@ -230,19 +230,22 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION get_amount_of_user_transactions(initiator_id_param integer, user_id_param integer)
 RETURNS integer AS $$
+DECLARE
+transaction_count INTEGER;
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM user_permission
         WHERE initiator_id_param = user_id AND
         (permission_id = 1 OR permission_id = 6)
     ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
+    END IF;
 
-    RETURN QUERY
-    SELECT COUNT(*) FROM transaction_logs
-    WHERE (sender_id = user_id_param
-    OR receiver_id = user_id_param)
+    SELECT COUNT(*) INTO transaction_count
+    FROM transaction_logs
+    WHERE (sender_id = user_id_param OR receiver_id = user_id_param)
     AND transaction_status = 100;
-END IF;
+
+    RETURN transaction_count;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -254,14 +257,15 @@ BEGIN
         WHERE initiator_id_param = user_id AND
         (permission_id = 1 OR permission_id = 6)
     ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
+    END IF;
 
     RETURN QUERY
-    SELECT sender_id, receiver_id, initiator_id, currency, amount, fee, created_at
+    SELECT transaction_logs.sender_id, transaction_logs.receiver_id, transaction_logs.initiator_id, transaction_logs.currency, transaction_logs.amount, transaction_logs.fee, transaction_logs.created_at
     FROM transaction_logs
-    WHERE (sender_id = user_id_param
-    OR receiver_id = user_id_param)
+    WHERE (transaction_logs.sender_id = user_id_param
+    OR transaction_logs.receiver_id = user_id_param)
     AND transaction_status = 100
-    ORDER BY created_at DESC
+    ORDER BY transaction_logs.created_at DESC
     OFFSET offset_param LIMIT limit_param;
 END;
 $$ LANGUAGE plpgsql;

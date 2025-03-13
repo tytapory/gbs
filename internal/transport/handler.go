@@ -53,7 +53,7 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	queryUserID := r.URL.Query().Get("user_id")
+	queryUserID := r.URL.Query().Get("id")
 	if queryUserID == "" {
 		logger.Debug("Missing id parameter")
 		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
@@ -66,7 +66,7 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page := r.URL.Query().Get("user_id")
+	page := r.URL.Query().Get("page")
 	if page == "" {
 		logger.Debug("Missing page parameter")
 		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
@@ -91,8 +91,9 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	history, err := repository.GetTransactionsHistory(initiatorID, queryUserIDInt, limit, offset)
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, "Failed to get transactions history")
+		return
 	}
-	json.NewEncoder(w).Encode(history)
+	json.NewEncoder(w).Encode(models.TransactionResponse{Transactions: history})
 }
 
 func parsePage(page int) (int, int) {

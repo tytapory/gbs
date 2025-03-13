@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type ErrorResponse struct {
 	Message string `json:"message"`
 }
@@ -42,13 +44,17 @@ type TransactionAmountResponse struct {
 }
 
 type Transaction struct {
-	SenderID   int    `json:"sender_id"`
-	ReceiverID int    `json:"receiver_id"`
-	Initiator  int    `json:"initiator"`
-	Currency   string `json:"currency"`
-	Amount     int    `json:"amount"`
-	Fee        int    `json:"fee"`
-	CreatedAt  int64  `json:"created_at"`
+	SenderID   int       `json:"sender_id"`
+	ReceiverID int       `json:"receiver_id"`
+	Initiator  int       `json:"initiator"`
+	Currency   string    `json:"currency"`
+	Amount     int       `json:"amount"`
+	Fee        int       `json:"fee"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type TransactionResponse struct {
+	Transactions []Transaction `json:"transactions"`
 }
 
 type PrintMoneyRequest struct {
