@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"gbs/internal/config"
+	"gbs/internal/models"
 	"gbs/pkg/logger"
+	"github.com/lib/pq"
 
 	_ "github.com/lib/pq"
 )
@@ -64,5 +66,56 @@ var RegisterUser = func(username string, passwordHash string) (int, error) {
 		return 0, fmt.Errorf("User already exists: %s", username)
 	}
 
+	return userID, nil
+}
+
+var GetBalances = func(initiatorID, userID int) ([]models.Balance, error) {
+	rows, err := db.Query("SELECT * FROM get_balances($1, $2)", initiatorID, userID)
+	var res []models.Balance
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return nil, fmt.Errorf(pqErr.Message)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return res, nil
+		}
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var balance models.Balance
+		err = rows.Scan(&balance.Currency, &balance.Amount)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return res, err
+		}
+		res = append(res, balance)
+	}
+	return res, nil
+}
+
+var TransferMoney = func(from int, to int, initiator int, currency string, amount int) error {
+	_, err := db.Exec("SELECT proceed_transaction($1, $2, $3, $4, $5, $6)", from, to, initiator, currency, amount, config.GetConfig().Core.CoreFee)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		} else {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return fmt.Errorf("internal database error")
+		}
+	}
+	return nil
+}
+
+var GetUserID = func(username string) (int, error) {
+	var userID int
+	err := db.QueryRow("SELECT id FROM users WHERE username = $1", username).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("User not found: %s", username)
+		}
+		return 0, err
+	}
 	return userID, nil
 }

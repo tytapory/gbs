@@ -1,12 +1,41 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"gbs/internal/auth"
 	"gbs/internal/models"
+	"gbs/internal/repository"
 	"gbs/pkg/logger"
 	"net/http"
+	"strconv"
+	"strings"
 )
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			logger.Debug("Missing Authorization header")
+			errorResponse(w, http.StatusUnauthorized, "Missing Authorization header")
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		userID, err := auth.GetUserIDFromJWT(tokenString)
+		logger.Debug(fmt.Sprintf("Got userID %d", userID))
+
+		if err != nil {
+			logger.Debug("User unauthorized")
+			errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "userID", userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 func Login(w http.ResponseWriter, r *http.Request) {
 	authenticate(w, r, auth.Login)
@@ -16,11 +45,80 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	authenticate(w, r, auth.RegisterUser)
 }
 
+func GetBalance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	initiatorID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get initiator user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	queryID := r.URL.Query().Get("id")
+	if queryID == "" {
+		logger.Error("Missing user ID in query parameters")
+		errorResponse(w, http.StatusBadRequest, "User ID is required")
+		return
+	}
+
+	targetUserID, err := strconv.Atoi(queryID)
+	if err != nil {
+		logger.Error("Invalid user ID in query parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	balances, err := repository.GetBalances(initiatorID, targetUserID)
+	if err != nil {
+		logger.Error("Failed to get user balances: " + err.Error())
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := models.BalanceResponse{Balances: balances}
+	json.NewEncoder(w).Encode(response)
+}
+
+func Transaction(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var requestData models.TransactionRequest
+	err := parseJSONRequest(r, &requestData)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
+	}
+
+	err = repository.TransferMoney(requestData.From, requestData.To, userID, requestData.Currency, requestData.Amount)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, err.Error())
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, string) (string, error)) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
 		logger.Debug("Invalid method response")
-		InvalidMethod(w, r)
+		invalidMethod(w, r)
 		return
 	}
 	defer r.Body.Close()
@@ -28,33 +126,29 @@ func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, 
 	err := parseJSONRequest(r, &requestData)
 	if err != nil {
 		logger.Debug("Invalid request body response: " + err.Error())
-		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	token, err := authFunc(requestData.Username, requestData.Password)
 	if err != nil || token == "" {
 		logger.Debug("Invalid credentials response: " + err.Error())
-		ErrorResponse(w, http.StatusUnauthorized, "Invalid credentials")
+		errorResponse(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	resp := models.AuthResponse{Token: token}
 	err = json.NewEncoder(w).Encode(resp)
-	if err != nil {
-		logger.Debug("Internal Server Error response: " + err.Error())
-		ErrorResponse(w, http.StatusInternalServerError, "Internal Server Error")
-	}
 	return
 }
 
-func ErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+func errorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	resp := models.ErrorResponse{Message: message}
 	json.NewEncoder(w).Encode(resp)
 }
 
-func InvalidMethod(w http.ResponseWriter, r *http.Request) {
-	ErrorResponse(w, http.StatusMethodNotAllowed, "Invalid method "+r.Method)
+func invalidMethod(w http.ResponseWriter, r *http.Request) {
+	errorResponse(w, http.StatusMethodNotAllowed, "Invalid method "+r.Method)
 }
 
 func parseJSONRequest(r *http.Request, v interface{}) error {

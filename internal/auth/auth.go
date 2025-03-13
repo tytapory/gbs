@@ -65,17 +65,19 @@ var refreshJWT = func() {
 
 }
 
-var getUserIDFromJWT = func(tokenString string) (int, error) {
+var GetUserIDFromJWT = func(tokenString string) (int, error) {
 	secret := []byte(config.GetConfig().Security.JwtSecret)
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			logger.Debug("Unexpected signing method")
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return secret, nil
 	})
 
 	if err != nil {
+		logger.Debug("Couldn't parse token")
 		return 0, fmt.Errorf("invalid token: %v", err)
 	}
 
@@ -83,9 +85,11 @@ var getUserIDFromJWT = func(tokenString string) (int, error) {
 		if userIDFloat, ok := claims["user_id"].(float64); ok {
 			return int(userIDFloat), nil
 		}
+		logger.Debug("Couldn't parse user id from token")
 		return 0, fmt.Errorf("user_id not found in token")
 	}
 
+	logger.Debug("Invalid token claims")
 	return 0, fmt.Errorf("invalid token claims")
 }
 
