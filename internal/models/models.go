@@ -28,3 +28,15 @@ type TransactionRequest struct {
 	Currency string `json:"currency"`
 	Amount   int    `json:"amount"`
 }
+
+type IDResponse struct {
+	ID int `json:"id"`
+}
+
+type UserPermissionsResponse struct {
+	Permissions []int `json:"permissions"`
+}
+
+type TransactionAmountResponse struct {
+	Amount int `json:"amount"`
+}

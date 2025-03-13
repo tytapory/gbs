@@ -22,7 +22,8 @@
     "login_max_length": 50,
     "password_min_length": 8,
     "password_max_length": 128,
-    "max_login_attempts": 5
+    "max_login_attempts": 5,
+    "allow_direct_registration": true
   },
   "core": {
     "fee": 100

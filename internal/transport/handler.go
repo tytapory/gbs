@@ -45,6 +45,94 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	authenticate(w, r, auth.RegisterUser)
 }
 
+func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	queryUserID := r.URL.Query().Get("id")
+	if queryUserID == "" {
+		logger.Debug("Missing id parameter")
+		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
+		return
+	}
+	queryUserIDInt, err := strconv.Atoi(queryUserID)
+	if err != nil {
+		logger.Debug("Invalid id parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid id parameter")
+		return
+	}
+	initiatorID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get initiator user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	amount, err := repository.GetTransactionCount(initiatorID, queryUserIDInt)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Failed to get amount of transactions")
+		return
+	}
+	json.NewEncoder(w).Encode(models.TransactionAmountResponse{Amount: amount})
+}
+
+func GetUserPermissions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	queryUserID := r.URL.Query().Get("id")
+	if queryUserID == "" {
+		logger.Debug("Missing id parameter")
+		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
+		return
+	}
+	userID, err := strconv.Atoi(queryUserID)
+	if err != nil {
+		logger.Debug("Invalid id parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid id parameter")
+		return
+	}
+	permissions, err := repository.GetUserPermissions(userID)
+	if err != nil {
+		logger.Debug("Internal server error")
+		errorResponse(w, http.StatusInternalServerError, "Internal server error")
+	}
+	json.NewEncoder(w).Encode(models.UserPermissionsResponse{Permissions: permissions})
+}
+
+func GetUserID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	queryUsername := r.URL.Query().Get("username")
+	if queryUsername == "" {
+		logger.Debug("Missing username in query parameters " + r.URL.RawQuery)
+		errorResponse(w, http.StatusBadRequest, "Username is required")
+		return
+	}
+	userID, err := repository.GetUserID(queryUsername)
+	if err != nil {
+		logger.Debug("User not found " + queryUsername)
+		errorResponse(w, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	response := models.IDResponse{ID: userID}
+	json.NewEncoder(w).Encode(response)
+}
+
 func GetBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {

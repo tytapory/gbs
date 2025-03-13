@@ -227,3 +227,21 @@ VALUES (register_user.username, register_user.password_hash)
 RETURN new_user_id;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_amount_of_user_transactions(initiator_id_param integer, user_id_param integer)
+RETURNS integer AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE initiator_id_param = user_id AND
+        (permission_id = 1 OR permission_id = 6)
+    ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
+
+    RETURN QUERY
+    SELECT COUNT(*) FROM transaction_logs
+    WHERE (sender_id = user_id_param
+    OR receiver_id = user_id_param)
+    AND transaction_status = 100;
+END IF;
+END;
+$$ LANGUAGE plpgsql;

@@ -119,3 +119,42 @@ var GetUserID = func(username string) (int, error) {
 	}
 	return userID, nil
 }
+
+var GetUserPermissions = func(userID int) ([]int, error) {
+	var permissions []int
+	rows, err := db.Query("SELECT permission_id FROM user_permission WHERE user_id = $1", userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return permissions, nil
+		}
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return permissions, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var permission int
+		err = rows.Scan(&permission)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return permissions, err
+		}
+		permissions = append(permissions, permission)
+	}
+	return permissions, nil
+}
+
+var GetTransactionCount = func(initiatorID, userID int) (int, error) {
+	var amount int
+	err := db.QueryRow("SELECT * FROM get_amount_of_user_transactions($1, $2)", initiatorID, userID).Scan(&amount)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("User do not have any transactions: %s", userID)
+		}
+		return 0, err
+	}
+	return amount, nil
+}
+
+var GetTransactionsHistory = func(initiatorID, userID, page, transactionsPerPage int) {
+
+}
