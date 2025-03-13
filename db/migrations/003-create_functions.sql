@@ -245,3 +245,23 @@ BEGIN
 END IF;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_transaction_history(initiator_id_param integer, user_id_param integer, limit_param integer, offset_param integer)
+RETURNS TABLE(sender_id integer, receiver_id integer, initiator_id integer, currency varchar(64), amount bigint, fee bigint, created_at timestamp) AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE initiator_id_param = user_id AND
+        (permission_id = 1 OR permission_id = 6)
+    ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
+
+    RETURN QUERY
+    SELECT sender_id, receiver_id, initiator_id, currency, amount, fee, created_at
+    FROM transaction_logs
+    WHERE (sender_id = user_id_param
+    OR receiver_id = user_id_param)
+    AND transaction_status = 100
+    ORDER BY created_at DESC
+    OFFSET offset_param LIMIT limit_param;
+END;
+$$ LANGUAGE plpgsql;

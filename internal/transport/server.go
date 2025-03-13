@@ -19,6 +19,8 @@ func Run() {
 	mux.Handle("/api/v1/getUserID", AuthMiddleware(http.HandlerFunc(GetUserID)))
 	mux.Handle("/api/v1/getUserPermissions", AuthMiddleware(http.HandlerFunc(GetUserPermissions)))
 	mux.Handle("/api/v1/getTransactionCount", AuthMiddleware(http.HandlerFunc(GetTransactionCount)))
+	mux.Handle("/api/v1/getTransactionsHistory", AuthMiddleware(http.HandlerFunc(GetTransactionsHistory)))
+	mux.Handle("/api/v1/printMoney", AuthMiddleware(http.HandlerFunc(PrintMoney)))
 
 	logger.Info("server listening on %s" + addr)
 	logger.Error(http.ListenAndServe(addr, mux).Error())

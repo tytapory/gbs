@@ -40,3 +40,19 @@ type UserPermissionsResponse struct {
 type TransactionAmountResponse struct {
 	Amount int `json:"amount"`
 }
+
+type Transaction struct {
+	SenderID   int    `json:"sender_id"`
+	ReceiverID int    `json:"receiver_id"`
+	Initiator  int    `json:"initiator"`
+	Currency   string `json:"currency"`
+	Amount     int    `json:"amount"`
+	Fee        int    `json:"fee"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type PrintMoneyRequest struct {
+	ReceiverID int    `json:"receiver_id"`
+	Currency   string `json:"currency"`
+	Amount     int    `json:"amount"`
+}

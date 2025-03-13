@@ -150,11 +150,40 @@ var GetTransactionCount = func(initiatorID, userID int) (int, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, fmt.Errorf("User do not have any transactions: %s", userID)
 		}
-		return 0, err
+		return 0, fmt.Errorf("Internal server error", err.Error())
 	}
 	return amount, nil
 }
 
-var GetTransactionsHistory = func(initiatorID, userID, page, transactionsPerPage int) {
+var GetTransactionsHistory = func(initiatorID, userID, limit, offset int) ([]models.Transaction, error) {
+	var transactions []models.Transaction
+	rows, err := db.Query("SELECT * FROM get_transaction_history($1, $2, $3, $4)", initiatorID, userID, limit, offset)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("User do not have any transactions: %s", userID)
+		}
+		return nil, fmt.Errorf("Internal server error", err.Error())
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var transaction models.Transaction
+		err = rows.Scan(&transaction.Currency, &transaction.Amount)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return transactions, fmt.Errorf("Internal server error", err.Error())
+		}
+		transactions = append(transactions, transaction)
+	}
+	return transactions, nil
+}
 
+var PrintMoney = func(receiver_id, initiator_id, amount int, currency string) error {
+	_, err := db.Exec("EXECUTE print_money($1, $2, $3, $4)", receiver_id, initiator_id, currency, amount)
+	if pqErr, ok := err.(*pq.Error); ok {
+		return fmt.Errorf(pqErr.Message)
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
 }

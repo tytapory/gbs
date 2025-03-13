@@ -45,6 +45,65 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	authenticate(w, r, auth.RegisterUser)
 }
 
+func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	queryUserID := r.URL.Query().Get("user_id")
+	if queryUserID == "" {
+		logger.Debug("Missing id parameter")
+		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
+		return
+	}
+	queryUserIDInt, err := strconv.Atoi(queryUserID)
+	if err != nil {
+		logger.Debug("Invalid id parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid id parameter")
+		return
+	}
+
+	page := r.URL.Query().Get("user_id")
+	if page == "" {
+		logger.Debug("Missing page parameter")
+		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
+		return
+	}
+	pageInt, err := strconv.Atoi(page)
+	if err != nil {
+		logger.Debug("Invalid page parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid id parameter")
+		return
+	}
+
+	initiatorID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get initiator user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	limit, offset := parsePage(pageInt)
+
+	history, err := repository.GetTransactionsHistory(initiatorID, queryUserIDInt, limit, offset)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Failed to get transactions history")
+	}
+	json.NewEncoder(w).Encode(history)
+}
+
+func parsePage(page int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	limit := page * 20
+	offset := (page - 1) * 20
+	return limit, offset
+}
+
 func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
@@ -198,6 +257,33 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	err = repository.TransferMoney(requestData.From, requestData.To, userID, requestData.Currency, requestData.Amount)
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func PrintMoney(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	var requestData models.PrintMoneyRequest
+	err := parseJSONRequest(r, &requestData)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	err = repository.PrintMoney(requestData.ReceiverID, userID, requestData.Amount, requestData.Currency)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
