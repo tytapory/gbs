@@ -55,7 +55,7 @@ type CoreConfig struct {
 	CoreFee int `json:"fee"`
 }
 
-var dotEnvLocation = "../../configs/.env"
+var dotEnvLocation = "configs/.env"
 var fileOpenFunc = os.Open
 
 func GetConfig() Config {
@@ -71,12 +71,12 @@ func GetConfig() Config {
 
 var loadConfig = func() {
 	logger.Info("Loading config")
-	err := loadConfigFromFile("../../config/config.json")
+	err := loadConfigFromFile("configs/config.json")
 	if err == nil {
 		return
 	}
 	logger.Warn(fmt.Sprintf("Can't open user config, trying to open default config: %s", err.Error()))
-	err = loadConfigFromFile("../../config/default-config.json")
+	err = loadConfigFromFile("configs/default_config.json")
 	if err == nil {
 		return
 	}

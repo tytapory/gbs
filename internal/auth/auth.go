@@ -12,11 +12,25 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var registerUser = func() {
-
+var RegisterUser = func(login, password string) (string, error) {
+	if !validateUsername(login) {
+		return "", fmt.Errorf("invalid username")
+	}
+	if !validatePassword(password) {
+		return "", fmt.Errorf("invalid password")
+	}
+	hash, err := generatePasswordHash(password)
+	if err != nil {
+		return "", err
+	}
+	userID, err := repository.RegisterUser(login, hash)
+	if err != nil {
+		return "", err
+	}
+	return generateJWT(userID)
 }
 
-var GenerateAuthJWT = func(login, password string) (string, error) {
+var Login = func(login, password string) (string, error) {
 	id, hash, err := repository.GetUserIDHash(login)
 	if err != nil {
 		return "", err
@@ -25,8 +39,12 @@ var GenerateAuthJWT = func(login, password string) (string, error) {
 		return "", fmt.Errorf("Couldnt find hash for user " + login)
 	}
 	if !compareHashes(hash, password) {
-		return "", fmt.Errorf("Invalid password for user " + username)
+		return "", fmt.Errorf("Invalid password for user " + login)
 	}
+	return generateJWT(id)
+}
+
+var generateJWT = func(id int) (string, error) {
 	tokenLifespan, err := time.ParseDuration(config.GetConfig().Security.TokenExpiry)
 	if err != nil {
 		logger.Fatal("Invalid token lifespan " + config.GetConfig().Security.TokenExpiry)
@@ -36,7 +54,7 @@ var GenerateAuthJWT = func(login, password string) (string, error) {
 		"exp":     time.Now().Add(tokenLifespan).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(config.GetConfig().Security.JWTSecret)
+	return token.SignedString([]byte(config.GetConfig().Security.JwtSecret))
 }
 
 var generateRefreshToken = func() {
@@ -47,8 +65,28 @@ var refreshJWT = func() {
 
 }
 
-var getUserIDFromJWT = func() {
+var getUserIDFromJWT = func(tokenString string) (int, error) {
+	secret := []byte(config.GetConfig().Security.JwtSecret)
 
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return secret, nil
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("invalid token: %v", err)
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if userIDFloat, ok := claims["user_id"].(float64); ok {
+			return int(userIDFloat), nil
+		}
+		return 0, fmt.Errorf("user_id not found in token")
+	}
+
+	return 0, fmt.Errorf("invalid token claims")
 }
 
 var validateUsername = func(username string) bool {
@@ -78,5 +116,5 @@ var generatePasswordHash = func(password string) (string, error) {
 
 var compareHashes = func(hash string, password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err != nil
+	return err == nil
 }

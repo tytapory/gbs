@@ -1,0 +1,31 @@
+version: "3"
+
+services:
+  server:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    command: go run cmd/app/main.go
+    ports:
+      - 8080:8080
+
+  db:
+    image: postgres:13
+    restart: always
+    environment:
+      - POSTGRES_USER=gbs
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=gbs_default
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/migrations:/migrations
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U gbs -d gbs_default'"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  pgdata:
