@@ -8,7 +8,6 @@ import (
 	"gbs/internal/models"
 	"gbs/pkg/logger"
 	"github.com/lib/pq"
-
 	_ "github.com/lib/pq"
 )
 
@@ -186,7 +185,7 @@ var GetTransactionsHistory = func(initiatorID, userID, limit, offset int) ([]mod
 }
 
 var PrintMoney = func(receiver_id, initiator_id, amount int, currency string) error {
-	_, err := db.Exec("EXECUTE print_money($1, $2, $3, $4)", receiver_id, initiator_id, currency, amount)
+	_, err := db.Exec("SELECT print_money($1, $2, $3, $4)", receiver_id, initiator_id, currency, amount)
 	if pqErr, ok := err.(*pq.Error); ok {
 		return fmt.Errorf(pqErr.Message)
 	} else if err != nil {
@@ -194,4 +193,65 @@ var PrintMoney = func(receiver_id, initiator_id, amount int, currency string) er
 		return fmt.Errorf("internal database error")
 	}
 	return nil
+}
+
+var SetPermission = func(initiator_id, user_id, permission_id int) error {
+	_, err := db.Exec("SELECT set_permission($1, $2, $3)", initiator_id, user_id, permission_id)
+	if pqErr, ok := err.(*pq.Error); ok {
+		return fmt.Errorf(pqErr.Message)
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
+}
+
+var UnsetPermission = func(initiator_id, user_id, permission_id int) error {
+	_, err := db.Exec("SELECT unset_permission($1, $2, $3)", initiator_id, user_id, permission_id)
+	if pqErr, ok := err.(*pq.Error); ok {
+		return fmt.Errorf(pqErr.Message)
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
+}
+
+var CheckRegistrationPermissions = func(initiatorID int) bool {
+	var allowed bool
+
+	err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM user_permission 
+			WHERE user_id = $1 
+			AND permission_id IN (1, 4)
+		)
+	`, initiatorID).Scan(&allowed)
+
+	if err != nil {
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return false
+	}
+	return allowed
+}
+
+var ChangePassword = func(initiatorID, userID int, hash string) error {
+	_, err := db.Exec("SELECT reset_user_password($1, $2, $3)", initiatorID, userID, hash)
+	if pqErr, ok := err.(*pq.Error); ok {
+		return fmt.Errorf(pqErr.Message)
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
+}
+
+var DoesDefaultUsersInitialized = func() bool {
+	row := db.QueryRow("SELECT password_hash FROM users WHERE id = 1")
+	var hash sql.NullString
+	if err := row.Scan(&hash); err != nil {
+		logger.Fatal(fmt.Sprintf("Database error: %s", err.Error()))
+		return false
+	}
+	return hash.Valid && hash.String != ""
 }

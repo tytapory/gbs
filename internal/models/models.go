@@ -62,3 +62,14 @@ type PrintMoneyRequest struct {
 	Currency   string `json:"currency"`
 	Amount     int    `json:"amount"`
 }
+
+type ModifyPermissionRequest struct {
+	PermissionID int  `json:"permission_id"`
+	UserID       int  `json:"user_id"`
+	Enabled      bool `json:"enabled"`
+}
+
+type ChangePasswordRequest struct {
+	UserID   int    `json:"user_id"`
+	Password string `json:"password"`
+}

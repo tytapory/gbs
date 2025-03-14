@@ -17,12 +17,16 @@ VALUES (100, 'Transaction: Successful'),
        (301, 'Get balance: Insufficient permissions'),
        (302, 'Get balance: User does not exists'),
        (401, 'Register: User already exists'),
-       (501, 'Get history: Insufficient permissions');
+       (501, 'Get history: Insufficient permissions'),
+       (601, 'Change permission: Insufficient permissions'),
+       (701, 'Change password: Insufficient permissions'),
+       (702, 'Change password: User does not exists');
+
 INSERT INTO permissions(name)
 VALUES ('administrator'),
-       ('manage_user_permissions'), --TODO
+       ('manage_user_permissions'),
        ('manage_user_funds'),
-       ('control_user_accounts'), --TODO
+       ('control_user_accounts'),
        ('print_money'),
        ('audit_funds'),
        ('receive_funds'),

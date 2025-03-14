@@ -240,32 +240,189 @@ BEGIN
     ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
     END IF;
 
-    SELECT COUNT(*) INTO transaction_count
-    FROM transaction_logs
-    WHERE (sender_id = user_id_param OR receiver_id = user_id_param)
-    AND transaction_status = 100;
+    SELECT
+        (SELECT COUNT(*)
+        FROM transaction_logs
+        WHERE (sender_id = user_id_param OR receiver_id = user_id_param)
+        AND transaction_status = 100)
+        +
+        (SELECT COUNT(*)
+        FROM print_money_logs
+        WHERE (initiator_id = user_id_param OR receiver_id = user_id_param)
+        AND print_status = 200)
+    INTO transaction_count;
 
     RETURN transaction_count;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_transaction_history(initiator_id_param integer, user_id_param integer, limit_param integer, offset_param integer)
-RETURNS TABLE(sender_id integer, receiver_id integer, initiator_id integer, currency varchar(64), amount bigint, fee bigint, created_at timestamp) AS $$
+CREATE OR REPLACE FUNCTION get_transaction_history(
+    initiator_id_param INTEGER,
+    user_id_param INTEGER,
+    limit_param INTEGER,
+    offset_param INTEGER
+) RETURNS TABLE(
+    sender_id INTEGER,
+    receiver_id INTEGER,
+    initiator_id INTEGER,
+    currency VARCHAR(64),
+    amount BIGINT,
+    fee BIGINT,
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    IF user_id_param != initiator_id_param AND NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+        AND permission_id IN (1, 6)
+    ) THEN
+        PERFORM raise_error(301);
+END IF;
+
+RETURN QUERY
+SELECT
+    transaction_logs.sender_id,
+    transaction_logs.receiver_id,
+    transaction_logs.initiator_id,
+    transaction_logs.currency,
+    transaction_logs.amount,
+    transaction_logs.fee,
+    transaction_logs.created_at
+FROM transaction_logs
+WHERE (transaction_logs.sender_id = user_id_param
+    OR transaction_logs.receiver_id = user_id_param)
+  AND transaction_logs.transaction_status = 100
+
+UNION ALL
+
+SELECT
+    -1 AS sender_id,
+    print_money_logs.receiver_id,
+    print_money_logs.initiator_id,
+    print_money_logs.currency,
+    print_money_logs.amount,
+    0 AS fee,
+    print_money_logs.created_at
+FROM print_money_logs
+WHERE print_money_logs.receiver_id = user_id_param
+  AND print_money_logs.print_status = 200
+
+ORDER BY created_at DESC
+OFFSET offset_param LIMIT limit_param;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION set_permission(
+    initiator_id_param INTEGER,
+    user_id_param INTEGER,
+    permission_id_param INTEGER
+) RETURNS VOID AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM user_permission
-        WHERE initiator_id_param = user_id AND
-        (permission_id = 1 OR permission_id = 6)
-    ) AND user_id_param != initiator_id_param THEN PERFORM raise_error(301);
+        SELECT 1 FROM permissions WHERE id = permission_id_param
+    ) THEN
+        PERFORM raise_error(401);
+    END IF;
+    IF permission_id_param = 1 THEN
+        PERFORM raise_error(401);
     END IF;
 
-    RETURN QUERY
-    SELECT transaction_logs.sender_id, transaction_logs.receiver_id, transaction_logs.initiator_id, transaction_logs.currency, transaction_logs.amount, transaction_logs.fee, transaction_logs.created_at
-    FROM transaction_logs
-    WHERE (transaction_logs.sender_id = user_id_param
-    OR transaction_logs.receiver_id = user_id_param)
-    AND transaction_status = 100
-    ORDER BY transaction_logs.created_at DESC
-    OFFSET offset_param LIMIT limit_param;
+    IF permission_id_param IN (2, 5) AND NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+        AND permission_id = 1
+    ) THEN
+        PERFORM raise_error(401);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+        AND permission_id IN (1, 2)
+    ) THEN
+        PERFORM raise_error(401);
+    END IF;
+
+    INSERT INTO user_permission (user_id, permission_id)
+    VALUES (user_id_param, permission_id_param)
+        ON CONFLICT DO NOTHING;
+
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION unset_permission(
+    initiator_id_param INTEGER,
+    user_id_param INTEGER,
+    permission_id_param INTEGER
+) RETURNS VOID AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM permissions WHERE id = permission_id_param
+    ) THEN
+        PERFORM raise_error(401);
+    END IF;
+
+    IF permission_id_param = 1 THEN
+        PERFORM raise_error(401);
+END IF;
+    IF permission_id_param IN (2, 5) AND NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+        AND permission_id = 1
+    ) THEN
+        PERFORM raise_error(401);
+END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+        AND permission_id IN (1, 2)
+    ) THEN
+        PERFORM raise_error(401);
+END IF;
+DELETE FROM user_permission
+WHERE user_id = user_id_param
+  AND permission_id = permission_id_param;
+
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION reset_user_password(
+    initiator_id INTEGER,
+    target_user_id INTEGER,
+    new_password_hash CHAR(60)
+) RETURNS VOID AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE id = target_user_id
+    ) THEN
+        PERFORM raise_error(702);
+END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id
+        AND permission_id IN (1, 4)
+    ) THEN
+        PERFORM raise_error(701);
+END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = target_user_id
+        AND permission_id = 1
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM user_permission
+            WHERE user_id = initiator_id
+            AND permission_id = 1
+        ) THEN
+            PERFORM raise_error(701);
+END IF;
+END IF;
+
+UPDATE users
+SET password_hash = new_password_hash
+WHERE id = target_user_id;
+
 END;
 $$ LANGUAGE plpgsql;

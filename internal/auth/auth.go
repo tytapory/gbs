@@ -44,6 +44,21 @@ var Login = func(login, password string) (string, error) {
 	return generateJWT(id)
 }
 
+var ChangePassword = func(initiatorID, userID int, password string) error {
+	if !validatePassword(password) {
+		return fmt.Errorf("invalid password")
+	}
+	hash, err := generatePasswordHash(password)
+	if err != nil {
+		return fmt.Errorf("invalid password")
+	}
+	err = repository.ChangePassword(initiatorID, userID, hash)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 var generateJWT = func(id int) (string, error) {
 	tokenLifespan, err := time.ParseDuration(config.GetConfig().Security.TokenExpiry)
 	if err != nil {

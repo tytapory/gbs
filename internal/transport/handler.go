@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gbs/internal/auth"
+	"gbs/internal/config"
 	"gbs/internal/models"
 	"gbs/internal/repository"
 	"gbs/pkg/logger"
@@ -42,7 +43,19 @@ func Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func Register(w http.ResponseWriter, r *http.Request) {
-	authenticate(w, r, auth.RegisterUser)
+	registrationAllowed := true
+	if !config.GetConfig().Security.AllowDirectRegistration {
+		initiatorID, ok := r.Context().Value("userID").(int)
+		if !ok {
+			logger.Error("Failed to get initiator user ID")
+			errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+			return
+		}
+		registrationAllowed = repository.CheckRegistrationPermissions(initiatorID)
+	}
+	if registrationAllowed {
+		authenticate(w, r, auth.RegisterUser)
+	}
 }
 
 func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
@@ -69,13 +82,13 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 	if page == "" {
 		logger.Debug("Missing page parameter")
-		errorResponse(w, http.StatusBadRequest, "Missing id parameter")
+		errorResponse(w, http.StatusBadRequest, "Missing page parameter")
 		return
 	}
 	pageInt, err := strconv.Atoi(page)
 	if err != nil {
 		logger.Debug("Invalid page parameter")
-		errorResponse(w, http.StatusBadRequest, "Invalid id parameter")
+		errorResponse(w, http.StatusBadRequest, "Invalid page parameter")
 		return
 	}
 
@@ -314,6 +327,66 @@ func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, 
 	resp := models.AuthResponse{Token: token}
 	err = json.NewEncoder(w).Encode(resp)
 	return
+}
+
+func ModifyPermission(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	var requestData models.ModifyPermissionRequest
+	err := parseJSONRequest(r, &requestData)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if requestData.Enabled {
+		err = repository.SetPermission(userID, requestData.UserID, requestData.PermissionID)
+	} else {
+		err = repository.UnsetPermission(userID, requestData.UserID, requestData.PermissionID)
+	}
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func ChangePassword(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		logger.Error("Failed to get user ID")
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	var requestData models.ChangePasswordRequest
+	err := parseJSONRequest(r, &requestData)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	err = auth.ChangePassword(userID, requestData.UserID, requestData.Password)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func errorResponse(w http.ResponseWriter, statusCode int, message string) {
