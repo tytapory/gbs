@@ -15,15 +15,16 @@
     "level": "INFO"
   },
   "security": {
-    "token_expiry": "15m",
-    "refresh_token_expiry": "7d",
-    "lockout_duration": "30m",
+    "token_expiry": "5m",
+    "refresh_token_expiry": "168h",
+    "lockout_duration": "5m",
     "login_min_length": 5,
     "login_max_length": 50,
     "password_min_length": 8,
     "password_max_length": 128,
     "max_login_attempts": 5,
-    "allow_direct_registration": true
+    "allow_direct_registration": true,
+    "rpm_for_ip": 200
   },
   "core": {
     "fee": 100

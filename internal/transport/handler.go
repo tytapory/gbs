@@ -9,10 +9,113 @@ import (
 	"gbs/internal/models"
 	"gbs/internal/repository"
 	"gbs/pkg/logger"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 )
+
+var (
+	failedLogins     = sync.Map{}
+	rateLimiterCache *lru.Cache[string, *models.RateLimitInfo]
+	mu               sync.Mutex
+	maxRequests      = config.GetConfig().Security.RPMForIP
+	timeWindow       = time.Minute
+)
+
+func cleanupExpiredAttempts() {
+	now := time.Now()
+	failedLogins.Range(func(key, value interface{}) bool {
+		attempt := value.(*models.LoginAttempt)
+		if now.After(attempt.BlockedUntil) {
+			failedLogins.Delete(key)
+		}
+		return true
+	})
+}
+
+func Init() {
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			cleanupExpiredAttempts()
+		}
+	}()
+	var err error
+	rateLimiterCache, err = lru.New[string, *models.RateLimitInfo](1000)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func RateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			http.Error(w, "Ошибка определения IP", http.StatusInternalServerError)
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		entry, found := rateLimiterCache.Get(ip)
+		if !found {
+			entry := &models.RateLimitInfo{
+				Requests:  1,
+				ResetTime: time.Now().Add(timeWindow),
+			}
+			rateLimiterCache.Add(ip, entry)
+		} else {
+			if time.Now().After(entry.ResetTime) {
+				entry.Requests = 1
+				entry.ResetTime = time.Now().Add(timeWindow)
+			} else {
+				entry.Requests++
+				if entry.Requests > maxRequests {
+					w.Header().Set("Retry-After", time.Until(entry.ResetTime).String())
+					errorResponse(w, http.StatusTooManyRequests, "too many requests")
+					return
+				}
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func checkLoginAttempt(username string) bool {
+	value, ok := failedLogins.Load(username)
+	if ok {
+		attempt := value.(*models.LoginAttempt)
+		if time.Now().Before(attempt.BlockedUntil) {
+			return false
+		}
+	}
+	return true
+}
+
+func registerFailedAttempt(username string) {
+	value, _ := failedLogins.LoadOrStore(username, &models.LoginAttempt{})
+	attempt := value.(*models.LoginAttempt)
+	attempt.Count++
+	if attempt.Count >= config.GetConfig().Security.MaxLoginAttempts {
+		duration, err := time.ParseDuration(config.GetConfig().Security.LockoutDuration)
+		if err != nil {
+			logger.Fatal("Can't parse lockout duration")
+		}
+		attempt.BlockedUntil = time.Now().Add(duration)
+	}
+	failedLogins.Store(username, attempt)
+}
+
+func resetLoginAttempts(username string) {
+	failedLogins.Delete(username)
+}
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +309,32 @@ func GetUserID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func GetUsername(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+
+	queryUserID := r.URL.Query().Get("id")
+	if queryUserID == "" {
+		logger.Debug("Missing id in query parameters " + r.URL.RawQuery)
+		errorResponse(w, http.StatusBadRequest, "ID is required")
+		return
+	}
+	queryUserIDInt, err := strconv.Atoi(queryUserID)
+	username, err := repository.GetUsername(queryUserIDInt)
+	if err != nil {
+		logger.Debug("User not found " + queryUserID)
+		errorResponse(w, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	response := models.UsernameResponse{Username: username}
+	json.NewEncoder(w).Encode(response)
+}
+
 func GetBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
@@ -302,7 +431,33 @@ func PrintMoney(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, string) (string, error)) {
+func RefreshJWT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		invalidMethod(w, r)
+		return
+	}
+	defer r.Body.Close()
+	var requestData models.RefreshRequest
+	err := parseJSONRequest(r, &requestData)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	token, err := auth.RefreshJWT(requestData.RefreshToken)
+	if err != nil {
+		errorResponse(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if token == "" {
+		errorResponse(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(models.RefreshResponse{Token: token})
+}
+
+func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, string) (string, string, error)) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
 		logger.Debug("Invalid method response")
@@ -317,14 +472,20 @@ func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, 
 		errorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	token, err := authFunc(requestData.Username, requestData.Password)
-	if err != nil || token == "" {
+	if !checkLoginAttempt(requestData.Username) {
+		errorResponse(w, http.StatusUnauthorized, "Too many attempts, try again later")
+		return
+	}
+	token, refreshToken, err := authFunc(requestData.Username, requestData.Password)
+	if err != nil || token == "" || refreshToken == "" {
+		registerFailedAttempt(requestData.Username)
 		logger.Debug("Invalid credentials response: " + err.Error())
 		errorResponse(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
+	resetLoginAttempts(requestData.Username)
 	w.WriteHeader(http.StatusOK)
-	resp := models.AuthResponse{Token: token}
+	resp := models.AuthResponse{Token: token, TokenExpiry: config.GetConfig().Security.TokenExpiry, RefreshToken: refreshToken, RefreshTokenExpiry: config.GetConfig().Security.RefreshTokenExpiry}
 	err = json.NewEncoder(w).Encode(resp)
 	return
 }

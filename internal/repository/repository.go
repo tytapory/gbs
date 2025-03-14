@@ -9,6 +9,7 @@ import (
 	"gbs/pkg/logger"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
+	"time"
 )
 
 var db *sql.DB
@@ -117,6 +118,18 @@ var GetUserID = func(username string) (int, error) {
 		return 0, err
 	}
 	return userID, nil
+}
+
+var GetUsername = func(userID int) (string, error) {
+	var username string
+	err := db.QueryRow("SELECT id FROM users WHERE userID = $1", username).Scan(&username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("User not found: %s", userID)
+		}
+		return "", err
+	}
+	return username, nil
 }
 
 var GetUserPermissions = func(userID int) ([]int, error) {
@@ -254,4 +267,39 @@ var DoesDefaultUsersInitialized = func() bool {
 		return false
 	}
 	return hash.Valid && hash.String != ""
+}
+
+var CreateRefreshToken = func(userID int, expiresAt time.Time) (string, error) {
+	var token string
+	err := db.QueryRow("SELECT create_refresh_token($1, $2)", userID, expiresAt).Scan(&token)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Database error (create_refresh_token): %s", err.Error()))
+		return "", err
+	}
+	return token, nil
+}
+
+var InvalidateRefreshTokens = func(userID int) error {
+	_, err := db.Exec("SELECT invalidate_refresh_tokens($1)", userID)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		}
+		logger.Error(fmt.Sprintf("Database error (invalidate_refresh_tokens): %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
+}
+
+var GetUserByRefreshToken = func(token string) (int, error) {
+	var userID int
+	err := db.QueryRow("SELECT is_refresh_token_valid($1)", token).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return -1, nil
+		}
+		logger.Error(fmt.Sprintf("Database error (is_refresh_token_valid): %s", err.Error()))
+		return -1, err
+	}
+	return userID, nil
 }

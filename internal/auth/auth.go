@@ -12,36 +12,52 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var RegisterUser = func(login, password string) (string, error) {
+var RegisterUser = func(login, password string) (string, string, error) {
 	if !validateUsername(login) {
-		return "", fmt.Errorf("invalid username")
+		return "", "", fmt.Errorf("invalid username")
 	}
 	if !validatePassword(password) {
-		return "", fmt.Errorf("invalid password")
+		return "", "", fmt.Errorf("invalid password")
 	}
 	hash, err := generatePasswordHash(password)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	userID, err := repository.RegisterUser(login, hash)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return generateJWT(userID)
+	token, err := generateJWT(userID)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err := generateRefreshToken(userID)
+	if err != nil {
+		return "", "", err
+	}
+	return token, refreshToken, nil
 }
 
-var Login = func(login, password string) (string, error) {
+var Login = func(login, password string) (string, string, error) {
 	id, hash, err := repository.GetUserIDHash(login)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if hash == "" {
-		return "", fmt.Errorf("Couldnt find hash for user " + login)
+		return "", "", fmt.Errorf("Couldnt find hash for user " + login)
 	}
 	if !compareHashes(hash, password) {
-		return "", fmt.Errorf("Invalid password for user " + login)
+		return "", "", fmt.Errorf("Invalid password for user " + login)
 	}
-	return generateJWT(id)
+	token, err := generateJWT(id)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err := generateRefreshToken(id)
+	if err != nil {
+		return "", "", err
+	}
+	return token, refreshToken, nil
 }
 
 var ChangePassword = func(initiatorID, userID int, password string) error {
@@ -55,6 +71,11 @@ var ChangePassword = func(initiatorID, userID int, password string) error {
 	err = repository.ChangePassword(initiatorID, userID, hash)
 	if err != nil {
 		return err
+	}
+	err = repository.InvalidateRefreshTokens(userID)
+	if err != nil {
+		logger.Error("Couldnt invalidate refresh tokens")
+		return fmt.Errorf("Couldnt invalidate refresh tokens")
 	}
 	return nil
 }
@@ -72,12 +93,31 @@ var generateJWT = func(id int) (string, error) {
 	return token.SignedString([]byte(config.GetConfig().Security.JwtSecret))
 }
 
-var generateRefreshToken = func() {
-
+var generateRefreshToken = func(userID int) (string, error) {
+	duration, err := time.ParseDuration(config.GetConfig().Security.RefreshTokenExpiry)
+	if err != nil {
+		logger.Fatal("Invalid refresh token expiry " + config.GetConfig().Security.RefreshTokenExpiry)
+	}
+	newRefreshToken, err := repository.CreateRefreshToken(userID, time.Now().Add(duration))
+	if err != nil {
+		return "", err
+	}
+	return newRefreshToken, nil
 }
 
-var refreshJWT = func() {
-
+var RefreshJWT = func(refreshToken string) (string, error) {
+	userID, err := repository.GetUserByRefreshToken(refreshToken)
+	if err != nil {
+		return "", err
+	}
+	if userID == -1 {
+		return "", fmt.Errorf("invalid refresh token")
+	}
+	token, err := generateJWT(userID)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 var GetUserIDFromJWT = func(tokenString string) (int, error) {

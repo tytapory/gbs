@@ -59,3 +59,14 @@ CREATE TABLE print_money_logs(
   amount bigint NOT NULL,
   created_at timestamp NOT NULL DEFAULT NOW()
 );
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE refresh_tokens (
+    user_id INTEGER NOT NULL,
+    token UUID NOT NULL DEFAULT gen_random_uuid(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT fk_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);

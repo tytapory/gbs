@@ -426,3 +426,52 @@ WHERE id = target_user_id;
 
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_refresh_token(
+    p_user_id INTEGER,
+    p_expires_at TIMESTAMPTZ
+) RETURNS UUID AS $$
+DECLARE
+new_token UUID;
+BEGIN
+INSERT INTO refresh_tokens(user_id, expires_at)
+VALUES (p_user_id, p_expires_at)
+    RETURNING token INTO new_token;
+
+RETURN new_token;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION invalidate_refresh_tokens(
+    p_user_id INTEGER
+) RETURNS VOID AS $$
+BEGIN
+UPDATE refresh_tokens
+SET revoked = true
+WHERE user_id = p_user_id
+  AND revoked = false
+  AND expires_at > now();
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION is_refresh_token_valid(
+    p_token UUID
+) RETURNS INTEGER AS $$
+DECLARE
+valid_user INTEGER;
+BEGIN
+SELECT user_id
+INTO valid_user
+FROM refresh_tokens
+WHERE token = p_token
+  AND revoked = false
+  AND expires_at > now()
+    LIMIT 1;
+
+IF valid_user IS NULL THEN
+        RETURN -1;
+ELSE
+        RETURN valid_user;
+END IF;
+END;
+$$ LANGUAGE plpgsql;

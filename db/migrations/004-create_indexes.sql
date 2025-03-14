@@ -46,3 +46,5 @@ CREATE INDEX IF NOT EXISTS print_money_logs_created_at_idx ON
 
 CREATE INDEX IF NOT EXISTS print_money_logs_initiator_receiver_idx ON
     print_money_logs(initiator_id, receiver_id);
+
+CREATE UNIQUE INDEX idx_refresh_tokens_token ON refresh_tokens(token);

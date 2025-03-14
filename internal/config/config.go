@@ -37,6 +37,7 @@ type SecurityConfig struct {
 	PasswordMaxLength       int  `json:"password_max_length"`
 	MaxLoginAttempts        int  `json:"max_login_attempts"`
 	AllowDirectRegistration bool `json:"allow_direct_registration"`
+	RPMForIP                int  `json:"rpm_for_ip"`
 }
 
 type LoggingConfig struct {

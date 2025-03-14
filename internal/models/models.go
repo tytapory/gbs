@@ -12,6 +12,17 @@ type AuthRequest struct {
 }
 
 type AuthResponse struct {
+	Token              string `json:"token"`
+	TokenExpiry        string `json:"token_expiry"`
+	RefreshToken       string `json:"refresh_token"`
+	RefreshTokenExpiry string `json:"refresh_token_expiry"`
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type RefreshResponse struct {
 	Token string `json:"token"`
 }
 
@@ -72,4 +83,18 @@ type ModifyPermissionRequest struct {
 type ChangePasswordRequest struct {
 	UserID   int    `json:"user_id"`
 	Password string `json:"password"`
+}
+
+type UsernameResponse struct {
+	Username string `json:"username"`
+}
+
+type LoginAttempt struct {
+	Count        int
+	BlockedUntil time.Time
+}
+
+type RateLimitInfo struct {
+	Requests  int
+	ResetTime time.Time
 }
