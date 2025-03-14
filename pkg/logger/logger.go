@@ -73,31 +73,31 @@ func setLogLevel(level string) {
 
 func Debug(msg string) {
 	if l.level <= DEBUG && l.debugLogger != nil {
-		l.debugLogger.Println(msg)
+		l.debugLogger.Output(3, msg)
 	}
 }
 
 func Info(msg string) {
 	if l.level <= INFO && l.infoLogger != nil {
-		l.infoLogger.Println(msg)
+		l.infoLogger.Output(3, msg)
 	}
 }
 
 func Warn(msg string) {
 	if l.level <= WARN && l.warnLogger != nil {
-		l.warnLogger.Println(msg)
+		l.warnLogger.Output(3, msg)
 	}
 }
 
 func Error(msg string) {
 	if l.level <= ERROR && l.errorLogger != nil {
-		l.errorLogger.Println(msg)
+		l.errorLogger.Output(3, msg)
 	}
 }
 
 func Fatal(msg string) {
 	if l.level <= FATAL && l.fatalLogger != nil {
-		l.fatalLogger.Fatalln(msg)
+		l.fatalLogger.Output(3, msg)
 	}
 	os.Exit(1)
 }
