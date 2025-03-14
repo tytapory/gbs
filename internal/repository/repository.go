@@ -16,7 +16,6 @@ var db *sql.DB
 
 func InitDB() {
 	cfg := config.GetConfig()
-
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.User, cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
@@ -35,7 +34,7 @@ func InitDB() {
 	logger.Info("Successfully connected to the database")
 }
 
-var GetUserIDHash = func(username string) (int, string, error) {
+func GetUserIDHash(username string) (int, string, error) {
 	var userID int
 	var passwordHash string
 
@@ -43,16 +42,15 @@ var GetUserIDHash = func(username string) (int, string, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			logger.Warn(fmt.Sprintf("User not found: %s", username))
-			return 0, "", fmt.Errorf("User not found: %s", username)
+			return 0, "", fmt.Errorf("user not found: %s", username)
 		}
 		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
 		return 0, "", err
 	}
-
 	return userID, passwordHash, nil
 }
 
-var RegisterUser = func(username string, passwordHash string) (int, error) {
+func RegisterUser(username string, passwordHash string) (int, error) {
 	var userID int
 
 	err := db.QueryRow("SELECT register_user($1, $2)", username, passwordHash).Scan(&userID)
@@ -63,13 +61,13 @@ var RegisterUser = func(username string, passwordHash string) (int, error) {
 
 	if userID == 0 {
 		logger.Warn(fmt.Sprintf("User already exists: %s", username))
-		return 0, fmt.Errorf("User already exists: %s", username)
+		return 0, fmt.Errorf("user already exists: %s", username)
 	}
 
 	return userID, nil
 }
 
-var GetBalances = func(initiatorID, userID int) ([]models.Balance, error) {
+func GetBalances(initiatorID, userID int) ([]models.Balance, error) {
 	rows, err := db.Query("SELECT * FROM get_balances($1, $2)", initiatorID, userID)
 	var res []models.Balance
 	if err != nil {
@@ -95,7 +93,7 @@ var GetBalances = func(initiatorID, userID int) ([]models.Balance, error) {
 	return res, nil
 }
 
-var TransferMoney = func(from int, to int, initiator int, currency string, amount int) error {
+func TransferMoney(from int, to int, initiator int, currency string, amount int) error {
 	_, err := db.Exec("SELECT proceed_transaction($1, $2, $3, $4, $5, $6)", from, to, initiator, currency, amount, config.GetConfig().Core.CoreFee)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
@@ -108,31 +106,31 @@ var TransferMoney = func(from int, to int, initiator int, currency string, amoun
 	return nil
 }
 
-var GetUserID = func(username string) (int, error) {
+func GetUserID(username string) (int, error) {
 	var userID int
 	err := db.QueryRow("SELECT id FROM users WHERE username = $1", username).Scan(&userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("User not found: %s", username)
+			return 0, fmt.Errorf("user not found: %s", username)
 		}
 		return 0, err
 	}
 	return userID, nil
 }
 
-var GetUsername = func(userID int) (string, error) {
+func GetUsername(userID int) (string, error) {
 	var username string
-	err := db.QueryRow("SELECT id FROM users WHERE userID = $1", username).Scan(&username)
+	err := db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("User not found: %s", userID)
+			return "", fmt.Errorf("user not found: %d", userID)
 		}
 		return "", err
 	}
 	return username, nil
 }
 
-var GetUserPermissions = func(userID int) ([]int, error) {
+func GetUserPermissions(userID int) ([]int, error) {
 	var permissions []int
 	rows, err := db.Query("SELECT permission_id FROM user_permission WHERE user_id = $1", userID)
 	if err != nil {
@@ -155,26 +153,26 @@ var GetUserPermissions = func(userID int) ([]int, error) {
 	return permissions, nil
 }
 
-var GetTransactionCount = func(initiatorID, userID int) (int, error) {
+func GetTransactionCount(initiatorID, userID int) (int, error) {
 	var amount int
 	err := db.QueryRow("SELECT * FROM get_amount_of_user_transactions($1, $2)", initiatorID, userID).Scan(&amount)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("User do not have any transactions: %s", userID)
+			return 0, fmt.Errorf("user does not have any transactions: %d", userID)
 		}
-		return 0, fmt.Errorf("Internal server error", err.Error())
+		return 0, fmt.Errorf("internal server error: %s", err.Error())
 	}
 	return amount, nil
 }
 
-var GetTransactionsHistory = func(initiatorID, userID, limit, offset int) ([]models.Transaction, error) {
+func GetTransactionsHistory(initiatorID, userID, limit, offset int) ([]models.Transaction, error) {
 	var transactions []models.Transaction
 	rows, err := db.Query("SELECT * FROM get_transaction_history($1, $2, $3, $4)", initiatorID, userID, limit, offset)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("User do not have any transactions: %s", userID)
+			return nil, fmt.Errorf("user does not have any transactions: %d", userID)
 		}
-		return nil, fmt.Errorf("Internal server error", err.Error())
+		return nil, fmt.Errorf("internal server error: %s", err.Error())
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -190,49 +188,54 @@ var GetTransactionsHistory = func(initiatorID, userID, limit, offset int) ([]mod
 		)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
-			return transactions, fmt.Errorf("Internal server error", err.Error())
+			return transactions, fmt.Errorf("internal server error: %s", err.Error())
 		}
 		transactions = append(transactions, transaction)
 	}
 	return transactions, nil
 }
 
-var PrintMoney = func(receiver_id, initiator_id, amount int, currency string) error {
-	_, err := db.Exec("SELECT print_money($1, $2, $3, $4)", receiver_id, initiator_id, currency, amount)
-	if pqErr, ok := err.(*pq.Error); ok {
-		return fmt.Errorf(pqErr.Message)
-	} else if err != nil {
-		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
-		return fmt.Errorf("internal database error")
+func PrintMoney(receiverID, initiatorID, amount int, currency string) error {
+	_, err := db.Exec("SELECT print_money($1, $2, $3, $4)", receiverID, initiatorID, currency, amount)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		} else {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return fmt.Errorf("internal database error")
+		}
 	}
 	return nil
 }
 
-var SetPermission = func(initiator_id, user_id, permission_id int) error {
-	_, err := db.Exec("SELECT set_permission($1, $2, $3)", initiator_id, user_id, permission_id)
-	if pqErr, ok := err.(*pq.Error); ok {
-		return fmt.Errorf(pqErr.Message)
-	} else if err != nil {
-		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
-		return fmt.Errorf("internal database error")
+func SetPermission(initiatorID, userID, permissionID int) error {
+	_, err := db.Exec("SELECT set_permission($1, $2, $3)", initiatorID, userID, permissionID)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		} else {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return fmt.Errorf("internal database error")
+		}
 	}
 	return nil
 }
 
-var UnsetPermission = func(initiator_id, user_id, permission_id int) error {
-	_, err := db.Exec("SELECT unset_permission($1, $2, $3)", initiator_id, user_id, permission_id)
-	if pqErr, ok := err.(*pq.Error); ok {
-		return fmt.Errorf(pqErr.Message)
-	} else if err != nil {
-		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
-		return fmt.Errorf("internal database error")
+func UnsetPermission(initiatorID, userID, permissionID int) error {
+	_, err := db.Exec("SELECT unset_permission($1, $2, $3)", initiatorID, userID, permissionID)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		} else {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return fmt.Errorf("internal database error")
+		}
 	}
 	return nil
 }
 
-var CheckRegistrationPermissions = func(initiatorID int) bool {
+func CheckRegistrationPermissions(initiatorID int) bool {
 	var allowed bool
-
 	err := db.QueryRow(`
 		SELECT EXISTS (
 			SELECT 1 FROM user_permission 
@@ -240,7 +243,6 @@ var CheckRegistrationPermissions = func(initiatorID int) bool {
 			AND permission_id IN (1, 4)
 		)
 	`, initiatorID).Scan(&allowed)
-
 	if err != nil {
 		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
 		return false
@@ -248,18 +250,20 @@ var CheckRegistrationPermissions = func(initiatorID int) bool {
 	return allowed
 }
 
-var ChangePassword = func(initiatorID, userID int, hash string) error {
+func ChangePassword(initiatorID, userID int, hash string) error {
 	_, err := db.Exec("SELECT reset_user_password($1, $2, $3)", initiatorID, userID, hash)
-	if pqErr, ok := err.(*pq.Error); ok {
-		return fmt.Errorf(pqErr.Message)
-	} else if err != nil {
-		logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
-		return fmt.Errorf("internal database error")
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		} else {
+			logger.Error(fmt.Sprintf("Database error: %s", err.Error()))
+			return fmt.Errorf("internal database error")
+		}
 	}
 	return nil
 }
 
-var DoesDefaultUsersInitialized = func() bool {
+func DoesDefaultUsersInitialized() bool {
 	row := db.QueryRow("SELECT password_hash FROM users WHERE id = 1")
 	var hash sql.NullString
 	if err := row.Scan(&hash); err != nil {
@@ -269,7 +273,7 @@ var DoesDefaultUsersInitialized = func() bool {
 	return hash.Valid && hash.String != ""
 }
 
-var CreateRefreshToken = func(userID int, expiresAt time.Time) (string, error) {
+func CreateRefreshToken(userID int, expiresAt time.Time) (string, error) {
 	var token string
 	err := db.QueryRow("SELECT create_refresh_token($1, $2)", userID, expiresAt).Scan(&token)
 	if err != nil {
@@ -279,7 +283,7 @@ var CreateRefreshToken = func(userID int, expiresAt time.Time) (string, error) {
 	return token, nil
 }
 
-var InvalidateRefreshTokens = func(userID int) error {
+func InvalidateRefreshTokens(userID int) error {
 	_, err := db.Exec("SELECT invalidate_refresh_tokens($1)", userID)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
@@ -291,7 +295,7 @@ var InvalidateRefreshTokens = func(userID int) error {
 	return nil
 }
 
-var GetUserByRefreshToken = func(token string) (int, error) {
+func GetUserByRefreshToken(token string) (int, error) {
 	var userID int
 	err := db.QueryRow("SELECT is_refresh_token_valid($1)", token).Scan(&userID)
 	if err != nil {
