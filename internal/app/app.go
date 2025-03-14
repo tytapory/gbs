@@ -27,7 +27,7 @@ func Run() {
 		if err != nil {
 			logger.Fatal(err.Error())
 		}
-		logger.Error("Default users initialized (adm, fees, registration, money_printer) - default password for all - CHANGE_ME. CHANGE ALL THE PASSWORDS RIGHT NOW")
+		logger.Error("Default users initialized (adm, fees, registration, money_printer). Default password for all - CHANGE_ME")
 	}
 	transport.Run()
 }
