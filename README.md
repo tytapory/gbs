@@ -3,7 +3,7 @@ GBS is a lightweight REST API core for P2P transactions, designed to support mul
 
 
 
-# Installation 
+# Getting Started
 
 ### 🚀 **Using Docker**
 1. **Install Docker** on your system if you haven't already.  
