@@ -13,11 +13,34 @@ import (
 	"gbs/pkg/logger"
 )
 
+// Login godoc
+// @Summary User Login
+// @Description Authenticate a user and return JWT and refresh token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body models.AuthRequest true "Login credentials"
+// @Success 200 {object} models.AuthResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/login [post]
 func Login(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Login endpoint hit")
 	authenticate(w, r, auth.Login)
 }
 
+// Register godoc
+// @Summary User Registration
+// @Description Register a new user if allowed, and return JWT tokens.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body models.AuthRequest true "Registration credentials"
+// @Success 200 {object} models.AuthResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 403 {object} models.ErrorResponse
+// @Router /api/v1/register [post]
 func Register(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Register endpoint hit")
 	allowRegistration := config.GetConfig().Security.AllowDirectRegistration
@@ -40,6 +63,18 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetTransactionsHistory godoc
+// @Summary Get Transactions History
+// @Description Retrieve the transactions history for a specified user.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Param page query int true "Page number"
+// @Success 200 {object} models.TransactionResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/getTransactionsHistory [get]
 func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetTransactionsHistory endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -83,6 +118,17 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.TransactionResponse{Transactions: history})
 }
 
+// GetTransactionCount godoc
+// @Summary Get Transaction Count
+// @Description Retrieve the number of transactions for a specified user.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Success 200 {object} models.TransactionAmountResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/getTransactionCount [get]
 func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetTransactionCount endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -118,6 +164,17 @@ func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.TransactionAmountResponse{Amount: amount})
 }
 
+// GetUserPermissions godoc
+// @Summary Get User Permissions
+// @Description Retrieve the permissions for a specified user.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} models.UserPermissionsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/v1/getUserPermissions [get]
 func GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUserPermissions endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -146,6 +203,17 @@ func GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.UserPermissionsResponse{Permissions: permissions})
 }
 
+// GetUserID godoc
+// @Summary Get User ID by Username
+// @Description Retrieve the user ID by providing a username.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param username query string true "Username"
+// @Success 200 {object} models.IDResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/getUserID [get]
 func GetUserID(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUserID endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -173,6 +241,17 @@ func GetUserID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.IDResponse{ID: userID})
 }
 
+// GetUsername godoc
+// @Summary Get Username by User ID
+// @Description Retrieve the username for a given user ID.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} models.UsernameResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/getUsername [get]
 func GetUsername(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUsername endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -200,6 +279,17 @@ func GetUsername(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.UsernameResponse{Username: username})
 }
 
+// GetBalance godoc
+// @Summary Get User Balances
+// @Description Retrieve account balances for a given user ID.
+// @Tags users, balances
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Success 200 {object} models.BalanceResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/getBalances [get]
 func GetBalance(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetBalance endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -235,6 +325,17 @@ func GetBalance(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.BalanceResponse{Balances: balances})
 }
 
+// Transaction godoc
+// @Summary Perform a Transaction
+// @Description Execute a money transfer between users.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param body body models.TransactionRequest true "Transaction details"
+// @Success 200 {string} string "OK"
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/transaction [post]
 func Transaction(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Transaction endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -269,6 +370,17 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// PrintMoney godoc
+// @Summary Print Money
+// @Description Credit money to a user's account.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param body body models.PrintMoneyRequest true "Print money details"
+// @Success 200 {string} string "OK"
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/printMoney [post]
 func PrintMoney(w http.ResponseWriter, r *http.Request) {
 	logger.Info("PrintMoney endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -303,6 +415,17 @@ func PrintMoney(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// RefreshJWT godoc
+// @Summary Refresh JWT Token
+// @Description Refresh the JWT token using a valid refresh token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body models.RefreshRequest true "Refresh token"
+// @Success 200 {object} models.RefreshResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/refreshJWT [post]
 func RefreshJWT(w http.ResponseWriter, r *http.Request) {
 	logger.Info("RefreshJWT endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -332,6 +455,7 @@ func RefreshJWT(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.RefreshResponse{Token: token})
 }
 
+// authenticate is an internal helper for authentication.
 func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, string) (string, string, error)) {
 	logger.Info("Authentication attempt")
 	w.Header().Set("Content-Type", "application/json")
@@ -376,6 +500,17 @@ func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, 
 	json.NewEncoder(w).Encode(resp)
 }
 
+// ModifyPermission godoc
+// @Summary Modify User Permission
+// @Description Change a user's permission settings.
+// @Tags users, permissions
+// @Accept json
+// @Produce json
+// @Param body body models.ModifyPermissionRequest true "Permission modification details"
+// @Success 200 {string} string "OK"
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/modifyPermission [post]
 func ModifyPermission(w http.ResponseWriter, r *http.Request) {
 	logger.Info("ModifyPermission endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -416,6 +551,17 @@ func ModifyPermission(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// ChangePassword godoc
+// @Summary Change User Password
+// @Description Update the password for a given user.
+// @Tags auth, users
+// @Accept json
+// @Produce json
+// @Param body body models.ChangePasswordRequest true "Change password details"
+// @Success 200 {string} string "OK"
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Router /api/v1/changePassword [post]
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	logger.Info("ChangePassword endpoint hit")
 	w.Header().Set("Content-Type", "application/json")

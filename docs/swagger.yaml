@@ -1,0 +1,542 @@
+basePath: /api/v1
+definitions:
+  models.AuthRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  models.AuthResponse:
+    properties:
+      refresh_token:
+        type: string
+      refresh_token_expiry:
+        type: string
+      token:
+        type: string
+      token_expiry:
+        type: string
+    type: object
+  models.Balance:
+    properties:
+      amount:
+        type: string
+      currency:
+        type: string
+    type: object
+  models.BalanceResponse:
+    properties:
+      balances:
+        items:
+          $ref: '#/definitions/models.Balance'
+        type: array
+    type: object
+  models.ChangePasswordRequest:
+    properties:
+      password:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  models.ErrorResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.IDResponse:
+    properties:
+      id:
+        type: integer
+    type: object
+  models.ModifyPermissionRequest:
+    properties:
+      enabled:
+        type: boolean
+      permission_id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  models.PrintMoneyRequest:
+    properties:
+      amount:
+        type: integer
+      currency:
+        type: string
+      receiver_id:
+        type: integer
+    type: object
+  models.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  models.RefreshResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  models.Transaction:
+    properties:
+      amount:
+        type: integer
+      created_at:
+        type: string
+      currency:
+        type: string
+      fee:
+        type: integer
+      initiator:
+        type: integer
+      receiver_id:
+        type: integer
+      sender_id:
+        type: integer
+    type: object
+  models.TransactionAmountResponse:
+    properties:
+      amount:
+        type: integer
+    type: object
+  models.TransactionRequest:
+    properties:
+      amount:
+        type: integer
+      currency:
+        type: string
+      from:
+        type: integer
+      to:
+        type: integer
+    type: object
+  models.TransactionResponse:
+    properties:
+      transactions:
+        items:
+          $ref: '#/definitions/models.Transaction'
+        type: array
+    type: object
+  models.UserPermissionsResponse:
+    properties:
+      permissions:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.UsernameResponse:
+    properties:
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: P2P REST API
+  title: GBS
+  version: "1.0"
+paths:
+  /api/v1/changePassword:
+    post:
+      consumes:
+      - application/json
+      description: Update the password for a given user.
+      parameters:
+      - description: Change password details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Change User Password
+      tags:
+      - auth
+      - users
+  /api/v1/getBalances:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve account balances for a given user ID.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BalanceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User Balances
+      tags:
+      - users
+      - balances
+  /api/v1/getTransactionCount:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the number of transactions for a specified user.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionAmountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Transaction Count
+      tags:
+      - transactions
+  /api/v1/getTransactionsHistory:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the transactions history for a specified user.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      - description: Page number
+        in: query
+        name: page
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Transactions History
+      tags:
+      - transactions
+  /api/v1/getUserID:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the user ID by providing a username.
+      parameters:
+      - description: Username
+        in: query
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.IDResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User ID by Username
+      tags:
+      - users
+  /api/v1/getUserPermissions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the permissions for a specified user.
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserPermissionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User Permissions
+      tags:
+      - users
+  /api/v1/getUsername:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the username for a given user ID.
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UsernameResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Username by User ID
+      tags:
+      - users
+  /api/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user and return JWT and refresh token.
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: User Login
+      tags:
+      - auth
+  /api/v1/modifyPermission:
+    post:
+      consumes:
+      - application/json
+      description: Change a user's permission settings.
+      parameters:
+      - description: Permission modification details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ModifyPermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Modify User Permission
+      tags:
+      - users
+      - permissions
+  /api/v1/printMoney:
+    post:
+      consumes:
+      - application/json
+      description: Credit money to a user's account.
+      parameters:
+      - description: Print money details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.PrintMoneyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Print Money
+      tags:
+      - transactions
+  /api/v1/refreshJWT:
+    post:
+      consumes:
+      - application/json
+      description: Refresh the JWT token using a valid refresh token.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RefreshResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Refresh JWT Token
+      tags:
+      - auth
+  /api/v1/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user if allowed, and return JWT tokens.
+      parameters:
+      - description: Registration credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: User Registration
+      tags:
+      - auth
+  /api/v1/transaction:
+    post:
+      consumes:
+      - application/json
+      description: Execute a money transfer between users.
+      parameters:
+      - description: Transaction details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.TransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Perform a Transaction
+      tags:
+      - transactions
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
