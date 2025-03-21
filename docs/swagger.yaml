@@ -1,0 +1,527 @@
+basePath: /
+definitions:
+  models.AuthRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  models.AuthResponse:
+    properties:
+      refresh_token:
+        type: string
+      refresh_token_expiry:
+        type: string
+      token:
+        type: string
+      token_expiry:
+        type: string
+    type: object
+  models.Balance:
+    properties:
+      amount:
+        type: string
+      currency:
+        type: string
+    type: object
+  models.BalanceResponse:
+    properties:
+      balances:
+        items:
+          $ref: '#/definitions/models.Balance'
+        type: array
+    type: object
+  models.ChangePasswordRequest:
+    properties:
+      password:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  models.ErrorResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.IDResponse:
+    properties:
+      id:
+        type: integer
+    type: object
+  models.ModifyPermissionRequest:
+    properties:
+      enabled:
+        type: boolean
+      permission_id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  models.PrintMoneyRequest:
+    properties:
+      amount:
+        type: integer
+      currency:
+        type: string
+      receiver_id:
+        type: integer
+    type: object
+  models.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  models.RefreshResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  models.Transaction:
+    properties:
+      amount:
+        type: integer
+      created_at:
+        type: string
+      currency:
+        type: string
+      fee:
+        type: integer
+      initiator:
+        type: integer
+      receiver_id:
+        type: integer
+      sender_id:
+        type: integer
+    type: object
+  models.TransactionAmountResponse:
+    properties:
+      amount:
+        type: integer
+    type: object
+  models.TransactionRequest:
+    properties:
+      amount:
+        type: integer
+      currency:
+        type: string
+      from:
+        type: integer
+      to:
+        type: integer
+    type: object
+  models.TransactionResponse:
+    properties:
+      transactions:
+        items:
+          $ref: '#/definitions/models.Transaction'
+        type: array
+    type: object
+  models.UserPermissionsResponse:
+    properties:
+      permissions:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.UsernameResponse:
+    properties:
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: GBS Documentation.
+  title: GBS API
+  version: "1.0"
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user and return a JWT token.
+      parameters:
+      - description: User credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Authentication successful
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Invalid credentials or unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Login
+      tags:
+      - auth
+  /printmoney:
+    post:
+      consumes:
+      - application/json
+      description: Print money to a user's account.
+      parameters:
+      - description: Print money details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PrintMoneyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Operation completed successfully
+        "400":
+          description: Invalid request body or operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Print Money
+      tags:
+      - transactions
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: Refresh the JWT token using a provided refresh token.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New JWT token
+          schema:
+            $ref: '#/definitions/models.RefreshResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Invalid token
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Refresh JWT Token
+      tags:
+      - auth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user with provided credentials. Registration is
+        allowed based on configuration and permissions.
+      parameters:
+      - description: Registration credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Registration successful
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Registration not allowed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - auth
+  /transaction:
+    post:
+      consumes:
+      - application/json
+      description: Transfer money from one user to another.
+      parameters:
+      - description: Transaction details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.TransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transaction completed successfully
+        "400":
+          description: Invalid request body or transfer failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Perform Transaction
+      tags:
+      - transactions
+  /transactions/count:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the count of transactions for a specific user.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transaction count
+          schema:
+            $ref: '#/definitions/models.TransactionAmountResponse'
+        "400":
+          description: Missing/invalid id parameter or count retrieval failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Transaction Count
+      tags:
+      - transactions
+  /transactions/history:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the transaction history for a specific user.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      - description: Page number for pagination
+        in: query
+        name: page
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transactions history
+          schema:
+            $ref: '#/definitions/models.TransactionResponse'
+        "400":
+          description: Missing/invalid parameters or failed to get history
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Transactions History
+      tags:
+      - transactions
+  /user/balance:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the balance information for a specified user.
+      parameters:
+      - description: Target user ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User balances
+          schema:
+            $ref: '#/definitions/models.BalanceResponse'
+        "400":
+          description: User ID is required or failed to get balances
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User Balance
+      tags:
+      - user
+  /user/changepassword:
+    post:
+      consumes:
+      - application/json
+      description: Change the password for a user.
+      parameters:
+      - description: Password change details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+        "400":
+          description: Invalid request body or operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Change Password
+      tags:
+      - user
+  /user/id:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the user ID based on username.
+      parameters:
+      - description: Username
+        in: query
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User ID
+          schema:
+            $ref: '#/definitions/models.IDResponse'
+        "400":
+          description: Username is required
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User ID
+      tags:
+      - user
+  /user/permission:
+    post:
+      consumes:
+      - application/json
+      description: Modify a user's permission by enabling or disabling it.
+      parameters:
+      - description: Permission modification details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.ModifyPermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Permission modified successfully
+        "400":
+          description: Invalid request body or operation failed
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Modify User Permission
+      tags:
+      - user
+  /user/permissions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve permissions for a given user.
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User permissions
+          schema:
+            $ref: '#/definitions/models.UserPermissionsResponse'
+        "400":
+          description: Missing or invalid id parameter
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Failed to get user permissions
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get User Permissions
+      tags:
+      - user
+  /user/username:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the username for a given user ID.
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Username
+          schema:
+            $ref: '#/definitions/models.UsernameResponse'
+        "400":
+          description: Missing or invalid id parameter
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: User not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Get Username
+      tags:
+      - user
+schemes:
+- http
+swagger: "2.0"

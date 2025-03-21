@@ -13,11 +13,40 @@ import (
 	"gbs/pkg/logger"
 )
 
+// -----------------------------------------------------------------------------
+// Login Endpoint
+// -----------------------------------------------------------------------------
+// Login godoc
+// @Summary Login
+// @Description Authenticate a user and return a JWT token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.AuthRequest true "User credentials"
+// @Success 200 {object} models.AuthResponse "Authentication successful"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body"
+// @Failure 401 {object} models.ErrorResponse "Invalid credentials or unauthorized"
+// @Router /login [post]
 func Login(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Login endpoint hit")
 	authenticate(w, r, auth.Login)
 }
 
+// -----------------------------------------------------------------------------
+// Register Endpoint
+// -----------------------------------------------------------------------------
+// Register godoc
+// @Summary Register a new user
+// @Description Register a new user with provided credentials. Registration is allowed based on configuration and permissions.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.AuthRequest true "Registration credentials"
+// @Success 200 {object} models.AuthResponse "Registration successful"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Failure 403 {object} models.ErrorResponse "Registration not allowed"
+// @Router /register [post]
 func Register(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Register endpoint hit")
 	allowRegistration := config.GetConfig().Security.AllowDirectRegistration
@@ -40,6 +69,21 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Get Transactions History Endpoint
+// -----------------------------------------------------------------------------
+// GetTransactionsHistory godoc
+// @Summary Get Transactions History
+// @Description Retrieve the transaction history for a specific user.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Param page query int true "Page number for pagination"
+// @Success 200 {object} models.TransactionResponse "Transactions history"
+// @Failure 400 {object} models.ErrorResponse "Missing/invalid parameters or failed to get history"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /transactions/history [get]
 func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetTransactionsHistory endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -83,6 +127,20 @@ func GetTransactionsHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.TransactionResponse{Transactions: history})
 }
 
+// -----------------------------------------------------------------------------
+// Get Transaction Count Endpoint
+// -----------------------------------------------------------------------------
+// GetTransactionCount godoc
+// @Summary Get Transaction Count
+// @Description Retrieve the count of transactions for a specific user.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Success 200 {object} models.TransactionAmountResponse "Transaction count"
+// @Failure 400 {object} models.ErrorResponse "Missing/invalid id parameter or count retrieval failed"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /transactions/count [get]
 func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetTransactionCount endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -118,6 +176,20 @@ func GetTransactionCount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.TransactionAmountResponse{Amount: amount})
 }
 
+// -----------------------------------------------------------------------------
+// Get User Permissions Endpoint
+// -----------------------------------------------------------------------------
+// GetUserPermissions godoc
+// @Summary Get User Permissions
+// @Description Retrieve permissions for a given user.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} models.UserPermissionsResponse "User permissions"
+// @Failure 400 {object} models.ErrorResponse "Missing or invalid id parameter"
+// @Failure 500 {object} models.ErrorResponse "Failed to get user permissions"
+// @Router /user/permissions [get]
 func GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUserPermissions endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -146,6 +218,20 @@ func GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.UserPermissionsResponse{Permissions: permissions})
 }
 
+// -----------------------------------------------------------------------------
+// Get User ID Endpoint
+// -----------------------------------------------------------------------------
+// GetUserID godoc
+// @Summary Get User ID
+// @Description Retrieve the user ID based on username.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param username query string true "Username"
+// @Success 200 {object} models.IDResponse "User ID"
+// @Failure 400 {object} models.ErrorResponse "Username is required"
+// @Failure 401 {object} models.ErrorResponse "User not found"
+// @Router /user/id [get]
 func GetUserID(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUserID endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -173,6 +259,20 @@ func GetUserID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.IDResponse{ID: userID})
 }
 
+// -----------------------------------------------------------------------------
+// Get Username Endpoint
+// -----------------------------------------------------------------------------
+// GetUsername godoc
+// @Summary Get Username
+// @Description Retrieve the username for a given user ID.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} models.UsernameResponse "Username"
+// @Failure 400 {object} models.ErrorResponse "Missing or invalid id parameter"
+// @Failure 401 {object} models.ErrorResponse "User not found"
+// @Router /user/username [get]
 func GetUsername(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetUsername endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -200,6 +300,20 @@ func GetUsername(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.UsernameResponse{Username: username})
 }
 
+// -----------------------------------------------------------------------------
+// Get Balance Endpoint
+// -----------------------------------------------------------------------------
+// GetBalance godoc
+// @Summary Get User Balance
+// @Description Retrieve the balance information for a specified user.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param id query int true "Target user ID"
+// @Success 200 {object} models.BalanceResponse "User balances"
+// @Failure 400 {object} models.ErrorResponse "User ID is required or failed to get balances"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /user/balance [get]
 func GetBalance(w http.ResponseWriter, r *http.Request) {
 	logger.Info("GetBalance endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -235,6 +349,20 @@ func GetBalance(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.BalanceResponse{Balances: balances})
 }
 
+// -----------------------------------------------------------------------------
+// Transaction Endpoint
+// -----------------------------------------------------------------------------
+// Transaction godoc
+// @Summary Perform Transaction
+// @Description Transfer money from one user to another.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param request body models.TransactionRequest true "Transaction details"
+// @Success 200 "Transaction completed successfully"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body or transfer failed"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /transaction [post]
 func Transaction(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Transaction endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -269,6 +397,20 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// -----------------------------------------------------------------------------
+// Print Money Endpoint
+// -----------------------------------------------------------------------------
+// PrintMoney godoc
+// @Summary Print Money
+// @Description Print money to a user's account.
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param request body models.PrintMoneyRequest true "Print money details"
+// @Success 200 "Operation completed successfully"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body or operation failed"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /printmoney [post]
 func PrintMoney(w http.ResponseWriter, r *http.Request) {
 	logger.Info("PrintMoney endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -303,6 +445,20 @@ func PrintMoney(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// -----------------------------------------------------------------------------
+// Refresh JWT Endpoint
+// -----------------------------------------------------------------------------
+// RefreshJWT godoc
+// @Summary Refresh JWT Token
+// @Description Refresh the JWT token using a provided refresh token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.RefreshRequest true "Refresh token"
+// @Success 200 {object} models.RefreshResponse "New JWT token"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body"
+// @Failure 401 {object} models.ErrorResponse "Invalid token"
+// @Router /refresh [post]
 func RefreshJWT(w http.ResponseWriter, r *http.Request) {
 	logger.Info("RefreshJWT endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -332,50 +488,20 @@ func RefreshJWT(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.RefreshResponse{Token: token})
 }
 
-func authenticate(w http.ResponseWriter, r *http.Request, authFunc func(string, string) (string, string, error)) {
-	logger.Info("Authentication attempt")
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodPost {
-		logger.Warn("authenticate: Invalid method " + r.Method)
-		invalidMethod(w, r)
-		return
-	}
-	defer r.Body.Close()
-
-	var req models.AuthRequest
-	if err := parseJSONRequest(r, &req); err != nil {
-		logger.Error("authenticate: Invalid request body: " + err.Error())
-		errorResponse(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	logger.Debug("authenticate: Attempting authentication for username: " + req.Username)
-	if !checkLoginAttempt(req.Username) {
-		logger.Warn("authenticate: Too many login attempts for username: " + req.Username)
-		errorResponse(w, http.StatusUnauthorized, "Too many login attempts, try again later")
-		return
-	}
-
-	token, refreshToken, err := authFunc(req.Username, req.Password)
-	if err != nil || token == "" || refreshToken == "" {
-		logger.Error("authenticate: Authentication failed for username: " + req.Username + " - " + err.Error())
-		registerFailedAttempt(req.Username)
-		errorResponse(w, http.StatusUnauthorized, "Invalid credentials")
-		return
-	}
-	resetLoginAttempts(req.Username)
-	logger.Info("authenticate: User " + req.Username + " authenticated successfully")
-
-	resp := models.AuthResponse{
-		Token:              token,
-		TokenExpiry:        config.GetConfig().Security.TokenExpiry,
-		RefreshToken:       refreshToken,
-		RefreshTokenExpiry: config.GetConfig().Security.RefreshTokenExpiry,
-	}
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
-}
-
+// -----------------------------------------------------------------------------
+// Modify Permission Endpoint
+// -----------------------------------------------------------------------------
+// ModifyPermission godoc
+// @Summary Modify User Permission
+// @Description Modify a user's permission by enabling or disabling it.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param request body models.ModifyPermissionRequest true "Permission modification details"
+// @Success 200 "Permission modified successfully"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body or operation failed"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /user/permission [post]
 func ModifyPermission(w http.ResponseWriter, r *http.Request) {
 	logger.Info("ModifyPermission endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
@@ -416,6 +542,20 @@ func ModifyPermission(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// -----------------------------------------------------------------------------
+// Change Password Endpoint
+// -----------------------------------------------------------------------------
+// ChangePassword godoc
+// @Summary Change Password
+// @Description Change the password for a user.
+// @Tags user
+// @Accept json
+// @Produce json
+// @Param request body models.ChangePasswordRequest true "Password change details"
+// @Success 200 "Password changed successfully"
+// @Failure 400 {object} models.ErrorResponse "Invalid request body or operation failed"
+// @Failure 401 {object} models.ErrorResponse "Unauthorized"
+// @Router /user/changepassword [post]
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	logger.Info("ChangePassword endpoint hit")
 	w.Header().Set("Content-Type", "application/json")
