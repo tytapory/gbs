@@ -31,7 +31,7 @@ var RegisterUser = func(login, password string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err := generateRefreshToken(userID)
+	refreshToken, err := generateUserRefreshToken(userID)
 	if err != nil {
 		return "", "", err
 	}
@@ -39,25 +39,49 @@ var RegisterUser = func(login, password string) (string, string, error) {
 }
 
 var Login = func(login, password string) (string, string, error) {
-	id, hash, err := repository.GetUserIDHash(login)
+	id, err := getUserIDByCreds(login, password)
 	if err != nil {
 		return "", "", err
-	}
-	if hash == "" {
-		return "", "", fmt.Errorf("Couldnt find hash for user " + login)
-	}
-	if !compareHashes(hash, password) {
-		return "", "", fmt.Errorf("Invalid password for user " + login)
 	}
 	token, err := generateJWT(id)
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err := generateRefreshToken(id)
+	refreshToken, err := generateUserRefreshToken(id)
 	if err != nil {
 		return "", "", err
 	}
 	return token, refreshToken, nil
+}
+
+var GetSystemRefreshToken = func(login, password string) (string, error) {
+	id, err := getUserIDByCreds(login, password)
+	if err != nil {
+		return "", err
+	}
+	token, err := generateSystemRefreshToken(id)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+var getUserIDByCreds = func(login, password string) (int, error) {
+	id, hash, err := repository.GetUserIDHash(login)
+	if err != nil {
+		return -1, err
+	}
+	if hash == "" {
+		return -1, fmt.Errorf("Couldnt find hash for user " + login)
+	}
+	if !compareHashes(hash, password) {
+		return -1, fmt.Errorf("Invalid password for user " + login)
+	}
+	return id, nil
+}
+
+var KillRefreshToken = func(token string) error {
+	return repository.InvalidateSingleRefreshToken(token)
 }
 
 var ChangePassword = func(initiatorID, userID int, password string) error {
@@ -93,12 +117,24 @@ var generateJWT = func(id int) (string, error) {
 	return token.SignedString([]byte(config.GetConfig().Security.JwtSecret))
 }
 
-var generateRefreshToken = func(userID int) (string, error) {
-	duration, err := time.ParseDuration(config.GetConfig().Security.RefreshTokenExpiry)
+var generateSystemRefreshToken = func(userID int) (string, error) {
+	expiry, err := time.ParseDuration(config.GetConfig().Security.SystemRefreshTokenExpiry)
 	if err != nil {
-		logger.Fatal("Invalid refresh token expiry " + config.GetConfig().Security.RefreshTokenExpiry)
+		return "", fmt.Errorf("Invalid expiry " + config.GetConfig().Security.SystemRefreshTokenExpiry)
 	}
-	newRefreshToken, err := repository.CreateRefreshToken(userID, time.Now().Add(duration))
+	return generateRefreshToken(userID, expiry)
+}
+
+var generateUserRefreshToken = func(userID int) (string, error) {
+	expiry, err := time.ParseDuration(config.GetConfig().Security.RefreshTokenExpiry)
+	if err != nil {
+		return "", fmt.Errorf("Invalid expiry " + config.GetConfig().Security.RefreshTokenExpiry)
+	}
+	return generateRefreshToken(userID, expiry)
+}
+
+var generateRefreshToken = func(userID int, expiry time.Duration) (string, error) {
+	newRefreshToken, err := repository.CreateRefreshToken(userID, time.Now().Add(expiry))
 	if err != nil {
 		return "", err
 	}

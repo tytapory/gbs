@@ -63,6 +63,10 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func GetSystemRefreshToken(w http.ResponseWriter, r *http.Request) {
+
+}
+
 // GetTransactionsHistory godoc
 // @Summary Get Transactions History
 // @Description Retrieve the transactions history for a specified user.

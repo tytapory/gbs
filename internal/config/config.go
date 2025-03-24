@@ -27,17 +27,18 @@ type ServerConfig struct {
 }
 
 type SecurityConfig struct {
-	TokenExpiry             string `json:"token_expiry"`
-	RefreshTokenExpiry      string `json:"refresh_token_expiry"`
-	LockoutDuration         string `json:"lockout_duration"`
-	JwtSecret               string
-	LoginMinLength          int  `json:"login_min_length"`
-	LoginMaxLength          int  `json:"login_max_length"`
-	PasswordMinLength       int  `json:"password_min_length"`
-	PasswordMaxLength       int  `json:"password_max_length"`
-	MaxLoginAttempts        int  `json:"max_login_attempts"`
-	AllowDirectRegistration bool `json:"allow_direct_registration"`
-	RPMForIP                int  `json:"rpm_for_ip"`
+	TokenExpiry              string `json:"token_expiry"`
+	RefreshTokenExpiry       string `json:"refresh_token_expiry"`
+	SystemRefreshTokenExpiry string `json:"system_refresh_token_expiry"`
+	LockoutDuration          string `json:"lockout_duration"`
+	JwtSecret                string
+	LoginMinLength           int  `json:"login_min_length"`
+	LoginMaxLength           int  `json:"login_max_length"`
+	PasswordMinLength        int  `json:"password_min_length"`
+	PasswordMaxLength        int  `json:"password_max_length"`
+	MaxLoginAttempts         int  `json:"max_login_attempts"`
+	AllowDirectRegistration  bool `json:"allow_direct_registration"`
+	RPMForIP                 int  `json:"rpm_for_ip"`
 }
 
 type LoggingConfig struct {

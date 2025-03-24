@@ -508,6 +508,18 @@ RETURN new_token;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION invalidate_single_refresh_token(
+  token_param INTEGER
+) RETURNS VOID AS $$
+BEGIN
+UPDATE refresh_tokens
+SET revoked = true
+WHERE token = token_param
+  AND revoked = false
+  AND expires_at > now();
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION invalidate_refresh_tokens(
   user_id_param INTEGER
 ) RETURNS VOID AS $$

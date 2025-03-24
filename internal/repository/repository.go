@@ -7,9 +7,10 @@ import (
 	"gbs/internal/config"
 	"gbs/internal/models"
 	"gbs/pkg/logger"
+	"time"
+
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
-	"time"
 )
 
 var db *sql.DB
@@ -290,6 +291,18 @@ func InvalidateRefreshTokens(userID int) error {
 			return fmt.Errorf(pqErr.Message)
 		}
 		logger.Error(fmt.Sprintf("Database error (invalidate_refresh_tokens): %s", err.Error()))
+		return fmt.Errorf("internal database error")
+	}
+	return nil
+}
+
+func InvalidateSingleRefreshToken(token string) error {
+	_, err := db.Exec("SELECT invalidate_single_refresh_token($1)", token)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			return fmt.Errorf(pqErr.Message)
+		}
+		logger.Error(fmt.Sprintf("Database error (invalidate_single_refresh_token): %s", err.Error()))
 		return fmt.Errorf("internal database error")
 	}
 	return nil
