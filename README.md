@@ -1,5 +1,4 @@
 # GBS
-
 GBS is a lightweight REST API core for P2P transactions, designed to support multiple clients and plugins via built-in user authentication.
 The core idea is that user permissions and credentials can be leveraged to easily develop various plugins that seamlessly integrate with the system.
 
