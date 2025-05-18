@@ -39,8 +39,6 @@ func Run() {
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: false,
 	})
-
-	logger.Info(fmt.Sprintf("Server listening on %s", addr))
 	handler := corsHandler.Handler(mux)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		logger.Error(err.Error())
