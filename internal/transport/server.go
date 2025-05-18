@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gbs/internal/config"
 	"gbs/pkg/logger"
+	"github.com/rs/cors"
 	"net/http"
 )
 
@@ -32,7 +33,16 @@ func Run() {
 
 	Init()
 	logger.Info(fmt.Sprintf("Server listening on %s", addr))
-	if err := http.ListenAndServe(addr, enableCORS(mux)); err != nil {
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: false,
+	})
+
+	logger.Info(fmt.Sprintf("Server listening on %s", addr))
+	handler := corsHandler.Handler(mux)
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		logger.Error(err.Error())
 	}
 }
