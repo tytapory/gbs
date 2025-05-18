@@ -32,7 +32,7 @@ func Run() {
 
 	Init()
 	logger.Info(fmt.Sprintf("Server listening on %s", addr))
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, enableCORS(mux)); err != nil {
 		logger.Error(err.Error())
 	}
 }
