@@ -5,7 +5,7 @@ The core idea is that user permissions and credentials can be leveraged to easil
 
 # Getting Started
 
-### 🚀 **Using Docker**
+### **Using Docker**
 1. **Install Docker** on your system if you haven't already.  
 2. Make sure that database settings in config.json **are the same** as in docker-compose.yml.
 3. **Run the application with Docker Compose:**  
@@ -13,14 +13,14 @@ The core idea is that user permissions and credentials can be leveraged to easil
    docker compose up -d
    ```
 
-### ⚡ **Running Without Docker**
+### **Running Without Docker**
 1. **Start PostgreSQL** and ensure that the `config.json` file contains the correct database credentials.  
 2. **Run the application manually:**  
    ```sh
    go run cmd/app/main.go
    ```
 
-### 👥 Default Users on First Launch
+### Default Users on First Launch
 On the first launch, the system automatically generates passwords for four default users and prints them to the console:
 Default users:
 - adm            → root user with full privileges  
@@ -32,7 +32,7 @@ Default users:
 
 ⚠️ Make sure to **change the passwords immediately** after setup to ensure security.
 
-# 📦 **Getting Started with the API**
+# **Getting Started with the API**
 
 After the server is running and default users are created, you can interact with the API using the generated credentials.  
 Here’s a simple example of how to authenticate and call a protected endpoint using `curl`:
@@ -48,10 +48,10 @@ This will return a JSON response with an authentication token:
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_expiry": "2025-03-22T12:34:56Z",
-  "refresh_token": "abc.def.ghi",
-  "refresh_token_expiry": "2025-04-21T12:34:56Z"
+  "token": "abc.def.ghi",
+  "token_expiry": "5m",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token_expiry": "24h"
 }
 ```
 
@@ -63,3 +63,10 @@ curl -X GET http://localhost:8080/api/v1/getBalances?id=1 \\
 ```
 
 This will return the balance data for the user with ID 1.
+
+# **TODO list**
+
+- Add webhook support
+- Add oauth2
+- Add cache
+- Add v2 api with much better endpoints than v1
