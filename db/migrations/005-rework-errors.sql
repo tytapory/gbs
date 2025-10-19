@@ -67,3 +67,74 @@ END IF;
 RETURN valid_user;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION set_permission(
+  initiator_id_param INTEGER,
+  user_id_param INTEGER,
+  permission_id_param INTEGER
+) RETURNS VOID AS $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM permissions WHERE id = permission_id_param
+  ) THEN
+    PERFORM raise_error(601);
+END IF;
+  IF permission_id_param = 1 THEN
+    PERFORM raise_error(601);
+END IF;
+
+  IF permission_id_param IN (2, 5)
+     AND NOT EXISTS (
+       SELECT 1 FROM user_permission
+       WHERE user_id = initiator_id_param
+         AND permission_id = 1
+     ) THEN
+    PERFORM raise_error(601);
+END IF;
+
+  IF NOT EXISTS (
+      SELECT 1 FROM user_permission
+      WHERE user_id = initiator_id_param
+        AND permission_id IN (1, 2)
+  ) THEN
+    PERFORM raise_error(601);
+END IF;
+
+INSERT INTO user_permission (user_id, permission_id)
+VALUES (user_id_param, permission_id_param)
+    ON CONFLICT DO NOTHING;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION unset_permission(
+  initiator_id_param INTEGER,
+  user_id_param INTEGER,
+  permission_id_param INTEGER
+) RETURNS VOID AS $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM permissions WHERE id = permission_id_param
+  ) THEN
+    PERFORM raise_error(601);
+END IF;
+
+  IF permission_id_param = 1 THEN
+    PERFORM raise_error(601);
+END IF;
+
+  IF permission_id_param IN (2, 5)
+     AND NOT EXISTS (
+       SELECT 1 FROM user_permission
+       WHERE user_id = initiator_id_param
+         AND permission_id = 1
+     ) THEN
+    PERFORM raise_error(601);
+END IF;
+
+  IF NOT EXISTS (
+      SELECT 1 FROM user_permission
+      WHERE user_id = initiator_id_param
+        AND permission_id IN (1, 2)
+  ) THEN
+    PERFORM raise_error(601);
+END IF;
