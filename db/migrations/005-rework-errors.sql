@@ -144,3 +144,266 @@ WHERE user_id = user_id_param
   AND permission_id = permission_id_param;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION print_money(
+  receiver_id_param integer,
+  initiator_id_param integer,
+  currency_param varchar(64),
+  amount_param bigint
+)
+  RETURNS void AS $$
+DECLARE
+receiver_balance_after bigint;
+BEGIN
+
+  IF NOT EXISTS (SELECT 1 FROM users WHERE id = receiver_id_param) THEN
+    PERFORM raise_error(201);
+END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM users WHERE id = initiator_id_param) THEN
+    PERFORM raise_error(202);
+END IF;
+
+  IF NOT EXISTS (
+      SELECT 1 FROM user_permission
+     WHERE user_id = initiator_id_param
+       AND permission_id IN (1, 5)
+  ) THEN
+    PERFORM raise_error(203);
+END IF;
+
+  IF amount_param <= 0 THEN
+    PERFORM raise_error(204);
+END IF;
+
+INSERT INTO balances(user_id, currency, amount)
+VALUES (receiver_id_param, currency_param, amount_param)
+    ON CONFLICT (user_id, currency)
+      DO UPDATE SET amount = balances.amount + EXCLUDED.amount
+                 RETURNING balances.amount INTO receiver_balance_after; -- АТОМАРНО, БЛЯДЬ!
+
+PERFORM log_print_money(
+      receiver_id_param, initiator_id_param, 200, receiver_balance_after,
+      currency_param, amount_param
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+INSERT INTO error_description (code, description, sql_state)
+VALUES (109, 'Transaction: Cannot send funds to self', 'G0003');
+
+CREATE OR REPLACE FUNCTION proceed_transaction(
+  sender_id_param integer,
+  receiver_id_param integer,
+  initiator_id_param integer,
+  currency_param varchar(64),
+  amount_param bigint,
+  fee_param integer
+)
+  RETURNS void AS $$
+DECLARE
+sender_balance_old bigint;
+  sender_balance_new bigint;
+  receiver_balance_new bigint;
+  commission_amount bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM users WHERE id = sender_id_param) THEN
+    PERFORM raise_error(101);
+END IF;
+  IF NOT EXISTS (SELECT 1 FROM users WHERE id = receiver_id_param) THEN
+    PERFORM raise_error(102);
+END IF;
+  IF NOT EXISTS (SELECT 1 FROM users WHERE id = initiator_id_param) THEN
+    PERFORM raise_error(103);
+END IF;
+
+  IF sender_id_param = receiver_id_param THEN
+    PERFORM raise_error(109);
+END IF;
+
+SELECT amount
+INTO sender_balance_old
+FROM balances
+WHERE user_id = sender_id_param AND currency = currency_param
+    FOR UPDATE;
+
+PERFORM check_transaction_permissions(initiator_id_param, sender_id_param, receiver_id_param);
+
+  IF amount_param <= 0 THEN
+    PERFORM raise_error(108);
+END IF;
+
+  IF sender_balance_old < amount_param OR sender_balance_old IS NULL THEN
+    PERFORM raise_error(107);
+END IF;
+
+  commission_amount := (amount_param * fee_param + 9999) / 10000;
+
+INSERT INTO balances(user_id, currency, amount)
+VALUES (
+           receiver_id_param, currency_param, amount_param - commission_amount
+       )
+    ON CONFLICT (user_id, currency)
+      DO UPDATE SET amount = balances.amount + EXCLUDED.amount
+                 RETURNING amount INTO receiver_balance_new;
+
+INSERT INTO balances(user_id, currency, amount)
+VALUES (
+           2, currency_param, commission_amount
+       )
+    ON CONFLICT (user_id, currency)
+      DO UPDATE SET amount = balances.amount + EXCLUDED.amount;
+
+UPDATE balances
+SET amount = sender_balance_old - amount_param
+WHERE user_id = sender_id_param AND currency = currency_param
+    RETURNING amount INTO sender_balance_new;
+
+PERFORM log_transaction(
+      sender_id_param, receiver_id_param, initiator_id_param, 100,
+      sender_balance_new, receiver_balance_new,
+      currency_param, amount_param, commission_amount
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_transaction_history(
+  initiator_id_param INTEGER,
+  user_id_param INTEGER,
+  limit_param INTEGER,
+  offset_param INTEGER
+) RETURNS TABLE(
+  sender_id INTEGER,
+  receiver_id INTEGER,
+  initiator_id INTEGER,
+  currency VARCHAR(64),
+  amount BIGINT,
+  fee BIGINT,
+  created_at TIMESTAMP
+) AS $$
+BEGIN
+  IF user_id_param != initiator_id_param
+     AND NOT EXISTS (
+       SELECT 1 FROM user_permission
+       WHERE user_id = initiator_id_param
+         AND permission_id IN (1, 6)
+     ) THEN
+    PERFORM raise_error(501);
+END IF;
+
+RETURN QUERY
+SELECT
+    transaction_logs.sender_id,
+    transaction_logs.receiver_id,
+    transaction_logs.initiator_id,
+    transaction_logs.currency,
+    transaction_logs.amount,
+    transaction_logs.fee,
+    transaction_logs.created_at
+FROM transaction_logs
+WHERE (transaction_logs.sender_id = user_id_param
+    OR transaction_logs.receiver_id = user_id_param)
+  AND transaction_logs.transaction_status = 100
+
+UNION ALL
+
+SELECT
+    -1 AS sender_id,
+    print_money_logs.receiver_id,
+    print_money_logs.initiator_id,
+    print_money_logs.currency,
+    print_money_logs.amount,
+    0 AS fee,
+    print_money_logs.created_at
+FROM print_money_logs
+
+WHERE (print_money_logs.receiver_id = user_id_param OR print_money_logs.initiator_id = user_id_param)
+  AND print_money_logs.print_status = 200
+
+ORDER BY created_at DESC
+OFFSET offset_param LIMIT limit_param;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_amount_of_user_transactions(
+  initiator_id_param integer,
+  user_id_param integer
+
+RETURNS integer AS $$
+DECLARE
+transaction_count INTEGER;
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM user_permission
+      WHERE initiator_id_param = user_id AND
+            (permission_id = 1 OR permission_id = 6)
+  ) AND user_id_param != initiator_id_param THEN
+    PERFORM raise_error(501);
+END IF;
+
+SELECT
+    (
+        SELECT COUNT(*)
+        FROM transaction_logs
+        WHERE (sender_id = user_id_param OR receiver_id = user_id_param)
+          AND transaction_status = 100
+    )
+        +
+    (
+        SELECT COUNT(*)
+        FROM print_money_logs
+        WHERE (initiator_id = user_id_param OR receiver_id = user_id_param)
+          AND print_status = 200
+    )
+INTO transaction_count;
+
+RETURN transaction_count;
+END;
+$$ LANGUAGE plpgsql;
+
+INSERT INTO error_description (code, description, sql_state)
+VALUES (402, 'Registration: Insufficient permissions', 'G0002');
+
+INSERT INTO error_description (code, description, sql_state)
+VALUES (403, 'Registration: Public registration is disabled', 'G0002');
+
+CREATE OR REPLACE FUNCTION register_user(
+  initiator_id_param INTEGER,
+  username_param text,
+  password_hash_param text,
+  public_reg_allowed_param BOOLEAN
+)
+RETURNS integer AS $$
+DECLARE
+new_user_id integer;
+BEGIN
+
+  IF initiator_id_param = 0 THEN
+    IF NOT public_reg_allowed_param THEN
+      PERFORM raise_error(403);
+    END IF;
+
+  ELSE
+    IF NOT EXISTS (
+        SELECT 1 FROM user_permission
+        WHERE user_id = initiator_id_param
+          AND permission_id IN (1, 4)
+    ) THEN
+      PERFORM raise_error(402);
+    END IF;
+
+  END IF;
+
+  IF EXISTS (
+      SELECT 1 FROM users WHERE users.username = username_param
+  ) THEN
+    PERFORM raise_error(401);
+  END IF;
+
+  INSERT INTO users (username, password_hash)
+  VALUES (username_param, password_hash_param)
+      RETURNING id INTO new_user_id;
+
+  RETURN new_user_id;
+END;
+$$ LANGUAGE plpgsql;

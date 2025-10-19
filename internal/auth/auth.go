@@ -35,17 +35,6 @@ func NewAuthServiceImplementation(repo repository.Repository, securityConfig con
 }
 
 func (a authServiceImplementation) RegisterUser(login, password string, initiatorID int) (models.AuthResponse, error) {
-	if !a.securityConfig.AllowDirectRegistration {
-		allowed, err := a.repo.CheckRegistrationPermissions(initiatorID)
-		if err != nil {
-			return models.AuthResponse{}, err
-		}
-
-		if !allowed {
-			return models.AuthResponse{}, &models.PermissionError{Message: "You are not allowed to register new users."}
-		}
-	}
-
 	if !a.validateUsername(login) {
 		return models.AuthResponse{}, &models.UnprocessableEntityError{Message: "Username is invalid. Please select another username."}
 	}
@@ -56,7 +45,7 @@ func (a authServiceImplementation) RegisterUser(login, password string, initiato
 	if err != nil {
 		return models.AuthResponse{}, err
 	}
-	userID, err := a.repo.RegisterUser(login, hash)
+	userID, err := a.repo.RegisterUser(initiatorID, a.securityConfig.AllowDirectRegistration, login, hash)
 	if err != nil {
 		return models.AuthResponse{}, err
 	}

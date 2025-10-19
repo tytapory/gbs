@@ -25,7 +25,7 @@ var _ Repository = repositoryImplementation{}
 
 type Repository interface {
 	GetUserIDHash(username string) (int, string, error)
-	RegisterUser(username string, passwordHash string) (int, error)
+	RegisterUser(initiatorID int, allowDirectRegistration bool, username string, passwordHash string) (int, error)
 	GetBalances(initiatorID, userID int) ([]models.Balance, error)
 	TransferMoney(from int, to int, initiator int, currency string, amount int) error
 	GetUserID(username string) (int, error)
@@ -87,9 +87,17 @@ func (r repositoryImplementation) GetUserIDHash(username string) (int, string, e
 	return userID, passwordHash, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) RegisterUser(username string, passwordHash string) (int, error) {
+func (r repositoryImplementation) RegisterUser(
+	initiatorID int, allowDirectRegistration bool, username string, passwordHash string,
+) (int, error) {
 	var userID int
-	err := r.db.QueryRow("SELECT register_user($1, $2)", username, passwordHash).Scan(&userID)
+	err := r.db.QueryRow(
+		"SELECT register_user($1, $2, $3, $4)",
+		initiatorID,
+		username,
+		passwordHash,
+		allowDirectRegistration,
+	).Scan(&userID)
 	return userID, r.mapSQLErrorToGolangError(err)
 }
 
