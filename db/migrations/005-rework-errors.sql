@@ -138,3 +138,9 @@ END IF;
   ) THEN
     PERFORM raise_error(601);
 END IF;
+
+DELETE FROM user_permission
+WHERE user_id = user_id_param
+  AND permission_id = permission_id_param;
+END;
+$$ LANGUAGE plpgsql;
