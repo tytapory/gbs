@@ -62,13 +62,13 @@ func NewRepositoryImplementation(databaseConfig config.DatabaseConfig, coreConfi
 	var err error
 	result.db, err = sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open database: %s %s", dsn, err.Error())
+		return nil, fmt.Errorf("failed to open database")
 	}
 
 	err = result.db.Ping()
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to connect to database: %s %s", dsn, err.Error())
+		return nil, fmt.Errorf("failed to connect to database")
 	}
 
 	logger.Info("Successfully connected to the database")
