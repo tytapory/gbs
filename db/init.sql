@@ -2,3 +2,4 @@
 \i /migrations/002-insert_default_data.sql
 \i /migrations/003-create_functions.sql
 \i /migrations/004-create_indexes.sql
+\i /migrations/005-rework-errors.sql
