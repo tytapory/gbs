@@ -30,6 +30,9 @@ END IF;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE INDEX IF NOT EXISTS error_description_code_idx
+    ON error_description(code);
+
 CREATE OR REPLACE FUNCTION register_user(username_param text, password_hash_param text)
 RETURNS integer AS $$
 DECLARE new_user_id integer;
