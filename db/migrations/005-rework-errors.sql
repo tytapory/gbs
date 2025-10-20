@@ -33,21 +33,6 @@ $$ LANGUAGE plpgsql;
 CREATE INDEX IF NOT EXISTS error_description_code_idx
     ON error_description(code);
 
-CREATE OR REPLACE FUNCTION register_user(username_param text, password_hash_param text)
-RETURNS integer AS $$
-DECLARE new_user_id integer;
-BEGIN
-IF EXISTS (
-  SELECT 1 FROM users WHERE users.username = username_param
-) THEN PERFORM raise_error(401);
-END IF;
-INSERT INTO users (username, password_hash)
-VALUES (username_param, password_hash_param)
-    RETURNING id INTO new_user_id;
-RETURN new_user_id;
-END;
-$$ LANGUAGE plpgsql;
-
 INSERT INTO error_description (code, description, sql_state)
 VALUES (801, 'Invalid or expired refresh token', 'G0001');
 

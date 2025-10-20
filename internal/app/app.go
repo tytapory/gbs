@@ -21,7 +21,7 @@ func Run() {
 		logger.Fatal(err.Error())
 	}
 	authService := auth.NewAuthServiceImplementation(repo, cfg.Security)
-	useCases := usecases.NewUseCasesImplementation(repo, authService, cfg.Security)
+	useCases := usecases.NewUseCasesImplementation(repo, authService)
 	rateLimiter := transport.NewRateLimiterImplementation(cfg.Security)
 	v1Handlers := transport.NewV1HandlersImplementation(useCases, rateLimiter)
 

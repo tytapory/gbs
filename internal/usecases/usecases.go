@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"gbs/internal/auth"
-	"gbs/internal/config"
 	"gbs/internal/models"
 	"gbs/internal/repository"
 )
@@ -33,9 +32,7 @@ type useCasesImplementation struct {
 	auth auth.AuthService
 }
 
-func NewUseCasesImplementation(
-	repo repository.Repository, auth auth.AuthService, securityConfig config.SecurityConfig,
-) UseCases {
+func NewUseCasesImplementation(repo repository.Repository, auth auth.AuthService) UseCases {
 	return useCasesImplementation{repo: repo, auth: auth}
 }
 
