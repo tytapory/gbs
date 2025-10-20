@@ -5,13 +5,26 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"gbs/pkg/logger"
 	"os"
+
+	"gbs/pkg/logger"
 
 	"github.com/joho/godotenv"
 )
 
-var cfg *Config
+var _ ConfigProvider = &configProviderImplementation{}
+
+type ConfigProvider interface {
+	Get() Config
+}
+
+type configProviderImplementation struct {
+	cfg *Config
+}
+
+func NewConfigProviderImplementation() ConfigProvider {
+	return &configProviderImplementation{}
+}
 
 type Config struct {
 	Database DatabaseConfig `json:"database"`
@@ -60,32 +73,31 @@ type CoreConfig struct {
 var dotEnvLocation = "configs/.env"
 var fileOpenFunc = os.Open
 
-func GetConfig() Config {
-	if cfg == nil {
+func (c *configProviderImplementation) Get() Config {
+	if c.cfg == nil {
 		logger.Debug("Config is not cached, caching now...")
-		loadConfig()
-		loadEnv()
+		c.loadConfig()
+		c.loadEnv()
 	} else {
 		logger.Debug("Returning cached config")
 	}
-	return *cfg
+	return *c.cfg
 }
 
-var loadConfig = func() {
+func (c *configProviderImplementation) loadConfig() {
 	logger.Info("Loading config")
-	err := loadConfigFromFile("configs/config.json")
+	err := c.loadConfigFromFile("configs/config.json")
 	if err == nil {
 		return
 	}
 	logger.Warn(fmt.Sprintf("Can't open user config, trying to open default config: %s", err.Error()))
-	err = loadConfigFromFile("configs/default_config.json")
-	if err == nil {
-		return
+	err = c.loadConfigFromFile("configs/default_config.json")
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Can't open default config: %s", err.Error()))
 	}
-	logger.Fatal(fmt.Sprintf("Can't open default config: %s", err.Error()))
 }
 
-var loadConfigFromFile = func(filename string) error {
+func (c *configProviderImplementation) loadConfigFromFile(filename string) error {
 	logger.Debug(fmt.Sprintf("Attempting to load configuration from '%s'", filename))
 	file, err := fileOpenFunc(filename)
 	if err != nil {
@@ -94,7 +106,7 @@ var loadConfigFromFile = func(filename string) error {
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&cfg); err != nil {
+	if err := decoder.Decode(&c.cfg); err != nil {
 		logger.Error(fmt.Sprintf("Failed to decode JSON from file '%s': %s", filename, err.Error()))
 		return err
 	}
@@ -102,18 +114,18 @@ var loadConfigFromFile = func(filename string) error {
 	return nil
 }
 
-var loadEnv = func() {
+func (c *configProviderImplementation) loadEnv() {
 	logger.Info("Loading JWT secret key")
 	jwtSecret, exists := os.LookupEnv("GBS_JWT_KEY")
 	if exists {
 		logger.Info("Key was found outside of .env")
-		cfg.Security.JwtSecret = jwtSecret
+		c.cfg.Security.JwtSecret = jwtSecret
 		return
 	}
 	if _, err := os.Stat(dotEnvLocation); os.IsNotExist(err) {
 		logger.Warn(fmt.Sprintf(".env file does not exist. This is okay if it's first launch: %s", err.Error()))
 		logger.Info("Trying to create new .env file and new key")
-		createEnvFile()
+		c.createEnvFile()
 	}
 	logger.Info("Opening .env file")
 	if err := godotenv.Load(dotEnvLocation); err != nil {
@@ -123,16 +135,16 @@ var loadEnv = func() {
 	if !exists || jwtSecret == "" {
 		logger.Fatal("Can't find 'GBS_JWT_KEY'")
 	}
-	cfg.Security.JwtSecret = jwtSecret
+	c.cfg.Security.JwtSecret = jwtSecret
 }
 
-var createEnvFile = func() {
+func (c *configProviderImplementation) createEnvFile() {
 	file, err := os.Create(dotEnvLocation)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Can't create .env file: %s", err.Error()))
 	}
 	defer file.Close()
-	key, err := generateKey()
+	key, err := c.generateKey()
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Can't create key: %s", err.Error()))
 	}
@@ -140,7 +152,7 @@ var createEnvFile = func() {
 	logger.Info(".env was successfully created")
 }
 
-func generateKey() (string, error) {
+func (c *configProviderImplementation) generateKey() (string, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
 	if err != nil {
