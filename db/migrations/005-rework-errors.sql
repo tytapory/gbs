@@ -183,7 +183,7 @@ INSERT INTO balances(user_id, currency, amount)
 VALUES (receiver_id_param, currency_param, amount_param)
     ON CONFLICT (user_id, currency)
       DO UPDATE SET amount = balances.amount + EXCLUDED.amount
-                 RETURNING balances.amount INTO receiver_balance_after; -- АТОМАРНО, БЛЯДЬ!
+                 RETURNING balances.amount INTO receiver_balance_after;
 
 PERFORM log_print_money(
       receiver_id_param, initiator_id_param, 200, receiver_balance_after,
