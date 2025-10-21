@@ -2,6 +2,19 @@ package models
 
 import "time"
 
+type Permission int
+
+const (
+	Administrator     Permission = 1
+	ManagePermissions Permission = 2
+	ManageFunds       Permission = 3
+	ControlAccounts   Permission = 4
+	PrintMoney        Permission = 5
+	AuditFunds        Permission = 6
+	ReceiveFunds      Permission = 7
+	SendFunds         Permission = 8
+)
+
 type ErrorResponse struct {
 	Message string `json:"message"`
 }
@@ -55,13 +68,16 @@ type TransactionAmountResponse struct {
 }
 
 type Transaction struct {
-	SenderID   int       `json:"sender_id"`
-	ReceiverID int       `json:"receiver_id"`
-	Initiator  int       `json:"initiator"`
-	Currency   string    `json:"currency"`
-	Amount     int       `json:"amount"`
-	Fee        int       `json:"fee"`
-	CreatedAt  time.Time `json:"created_at"`
+	SenderID             int       `json:"sender_id,omitempty"`
+	ReceiverID           int       `json:"receiver_id,omitempty"`
+	InitiatorID          int       `json:"initiator_id,omitempty"`
+	TransactionStatus    int       `json:"transaction_status,omitempty"`
+	SenderBalanceAfter   int       `json:"sender_balance_after,omitempty"`
+	ReceiverBalanceAfter int       `json:"receiver_balance_after,omitempty"`
+	Currency             string    `json:"currency,omitempty"`
+	Amount               int       `json:"amount,omitempty"`
+	Fee                  int       `json:"fee,omitempty"`
+	CreatedAt            time.Time `json:"created_at,omitempty"`
 }
 
 type TransactionResponse struct {

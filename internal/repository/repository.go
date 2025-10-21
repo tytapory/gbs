@@ -189,7 +189,7 @@ func (r repositoryImplementation) GetTransactionsHistory(initiatorID, userID, li
 		err = rows.Scan(
 			&transaction.SenderID,
 			&transaction.ReceiverID,
-			&transaction.Initiator,
+			&transaction.InitiatorID,
 			&transaction.Currency,
 			&transaction.Amount,
 			&transaction.Fee,
