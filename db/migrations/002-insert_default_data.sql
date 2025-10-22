@@ -7,10 +7,3 @@ VALUES ('administrator'),
        ('audit_funds'),
        ('receive_funds'),
        ('send_funds');
-
-INSERT INTO users(username)
-VALUES ('adm'), --1
-       ('fees'); --2
-
-INSERT INTO user_permission(user_id, permission_id)
-VALUES (1, 1);

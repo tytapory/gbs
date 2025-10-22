@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/google/uuid"
+
 	"gbs/internal/config"
 	"gbs/internal/models"
 	"gbs/internal/repository"
@@ -17,10 +19,10 @@ import (
 var _ AuthService = authServiceImplementation{}
 
 type AuthService interface {
-	GetUserIDFromJWT(tokenString string) (int, error)
+	GetUserIDFromJWT(tokenString string) (uuid.UUID, error)
 	ValidateUsername(username string) bool
 	ValidatePassword(password string) bool
-	GenerateJWT(id int) (string, error)
+	GenerateJWT(id uuid.UUID) (string, error)
 	GeneratePasswordHash(password string) (string, error)
 	CompareHashes(hash string, password string) bool
 }
@@ -34,7 +36,7 @@ func NewAuthServiceImplementation(repo repository.Repository, securityConfig con
 	return authServiceImplementation{repo: repo, securityConfig: securityConfig}
 }
 
-func (a authServiceImplementation) GetUserIDFromJWT(tokenString string) (int, error) {
+func (a authServiceImplementation) GetUserIDFromJWT(tokenString string) (uuid.UUID, error) { // <-- 1. ВОЗВРАЩАЕТ UUID!
 	secret := []byte(a.securityConfig.JwtSecret)
 
 	token, err := jwt.Parse(
@@ -49,29 +51,37 @@ func (a authServiceImplementation) GetUserIDFromJWT(tokenString string) (int, er
 
 	if err != nil {
 		logger.Debug("Couldn't parse token")
-		return 0, fmt.Errorf("invalid token: %v", err)
+		return uuid.UUID{}, fmt.Errorf("invalid token: %w", err)
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		if userIDFloat, ok := claims["user_id"].(float64); ok {
-			return int(userIDFloat), nil
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			logger.Debug("Couldn't parse user_id claim as string from token")
+			return uuid.UUID{}, fmt.Errorf("user_id claim is not a string")
 		}
-		logger.Debug("Couldn't parse user id from token")
-		return 0, fmt.Errorf("user_id not found in token")
+
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			logger.Debug(fmt.Sprintf("Couldn't parse user_id string '%s' into UUID: %v", userIDStr, err))
+			return uuid.UUID{}, fmt.Errorf("invalid user_id format in token: %w", err)
+		}
+
+		return userID, nil
 	}
 
 	logger.Debug("Invalid token claims")
-	return 0, fmt.Errorf("invalid token claims")
+	return uuid.UUID{}, fmt.Errorf("invalid token claims")
 }
 
-func (a authServiceImplementation) GenerateJWT(id int) (string, error) {
+func (a authServiceImplementation) GenerateJWT(id uuid.UUID) (string, error) {
 	tokenLifespan, err := time.ParseDuration(a.securityConfig.TokenExpiry)
 	if err != nil {
 		logger.Error("Invalid token lifespan " + a.securityConfig.TokenExpiry)
 		return "", &models.ServerFaultError{Message: "Internal config error: invalid token lifespan"}
 	}
 	claims := jwt.MapClaims{
-		"user_id": id,
+		"user_id": id.String(),
 		"exp":     time.Now().Add(tokenLifespan).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

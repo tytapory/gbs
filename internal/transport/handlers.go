@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"gbs/internal/models"
 	"gbs/internal/usecases"
 	"gbs/pkg/logger"
@@ -96,7 +98,7 @@ func (h v1HandlersImplementation) AuthMiddleware(next http.Handler) http.Handler
 				h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
-			logger.Debug(fmt.Sprintf("Authenticated userID: %d", userID))
+			logger.Debug(fmt.Sprintf("Authenticated userID: %s", userID.String()))
 
 			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -130,7 +132,7 @@ func (h v1HandlersImplementation) Login(w http.ResponseWriter, r *http.Request) 
 	}
 
 	result, err := h.useCases.Login(req.Username, req.Password)
-	if err != nil || result.Token == "" || result.RefreshToken == "" {
+	if err != nil || result.Token == "" || result.RefreshToken == uuid.Nil {
 		logger.Error("Login: Authentication failed for username: " + req.Username + " - " + err.Error())
 		h.rateLimiter.RegisterFailedLoginAttempt(req.Username)
 		h.respondBasedOnErrorType(w, err)
@@ -170,10 +172,10 @@ func (h v1HandlersImplementation) Register(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	initiatorID, _ := r.Context().Value(userIDKey).(int)
+	initiatorID, _ := r.Context().Value(userIDKey).(uuid.UUID)
 
 	result, err := h.useCases.Register(req.Username, req.Password, initiatorID)
-	if err != nil || result.Token == "" || result.RefreshToken == "" {
+	if err != nil || result.Token == "" || result.RefreshToken == uuid.Nil {
 		logger.Error("Register: Authentication failed for username: " + req.Username + " - " + err.Error())
 		h.rateLimiter.RegisterFailedLoginAttempt(req.Username)
 		h.respondBasedOnErrorType(w, err)
@@ -198,14 +200,14 @@ func (h v1HandlersImplementation) GetTransactionsHistory(w http.ResponseWriter, 
 	}
 	defer r.Body.Close()
 
-	initiatorID, ok := r.Context().Value(userIDKey).(int)
+	initiatorID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("GetTransactionsHistory: Unauthorized access")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-	targetUserID, err := h.parseQueryInt(r, "id")
+	targetUserID, err := h.parseQueryUUID(r, "id")
 	if err != nil {
 		logger.Error("GetTransactionsHistory: Missing or invalid id parameter")
 		h.errorResponse(w, http.StatusBadRequest, "Missing or invalid id parameter")
@@ -222,7 +224,8 @@ func (h v1HandlersImplementation) GetTransactionsHistory(w http.ResponseWriter, 
 	limit, offset := h.parsePage(page)
 	logger.Debug(
 		fmt.Sprintf(
-			"GetTransactionsHistory: targetUserID=%d, initiatorID=%d, limit=%d, offset=%d", targetUserID, initiatorID,
+			"GetTransactionsHistory: targetUserID=%s, initiatorID=%s, limit=%d, offset=%d", targetUserID.String(),
+			initiatorID.String(),
 			limit, offset,
 		),
 	)
@@ -250,21 +253,25 @@ func (h v1HandlersImplementation) GetTransactionCount(w http.ResponseWriter, r *
 	}
 	defer r.Body.Close()
 
-	targetUserID, err := h.parseQueryInt(r, "id")
+	targetUserID, err := h.parseQueryUUID(r, "id")
 	if err != nil {
 		logger.Error("GetTransactionCount: Missing or invalid id parameter")
 		h.errorResponse(w, http.StatusBadRequest, "Missing or invalid id parameter")
 		return
 	}
 
-	initiatorID, ok := r.Context().Value(userIDKey).(int)
+	initiatorID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("GetTransactionCount: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-	logger.Debug(fmt.Sprintf("GetTransactionCount: targetUserID=%d, initiatorID=%d", targetUserID, initiatorID))
+	logger.Debug(
+		fmt.Sprintf(
+			"GetTransactionCount: targetUserID=%s, initiatorID=%s", targetUserID.String(), initiatorID.String(),
+		),
+	)
 	amount, err := h.useCases.GetTransactionCount(initiatorID, targetUserID)
 	if err != nil {
 		logger.Error(err.Error())
@@ -288,7 +295,7 @@ func (h v1HandlersImplementation) GetUserPermissions(w http.ResponseWriter, r *h
 	}
 	defer r.Body.Close()
 
-	userID, err := h.parseQueryInt(r, "id")
+	userID, err := h.parseQueryUUID(r, "id")
 	if err != nil {
 		logger.Error("GetUserPermissions: Missing or invalid id parameter")
 		h.errorResponse(w, http.StatusBadRequest, "Missing or invalid id parameter")
@@ -296,7 +303,7 @@ func (h v1HandlersImplementation) GetUserPermissions(w http.ResponseWriter, r *h
 		return
 	}
 
-	logger.Debug(fmt.Sprintf("GetUserPermissions: Fetching permissions for userID=%d", userID))
+	logger.Debug(fmt.Sprintf("GetUserPermissions: Fetching permissions for userID=%s", userID.String()))
 	permissions, err := h.useCases.GetUserPermissions(userID)
 	if err != nil {
 		logger.Error(err.Error())
@@ -352,7 +359,7 @@ func (h v1HandlersImplementation) GetUsername(w http.ResponseWriter, r *http.Req
 	}
 	defer r.Body.Close()
 
-	targetUserID, err := h.parseQueryInt(r, "id")
+	targetUserID, err := h.parseQueryUUID(r, "id")
 	if err != nil {
 		logger.Error("GetUsername: Missing or invalid id parameter")
 		h.errorResponse(w, http.StatusBadRequest, "Missing or invalid id parameter")
@@ -360,7 +367,7 @@ func (h v1HandlersImplementation) GetUsername(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	logger.Debug(fmt.Sprintf("GetUsername: Fetching username for userID=%d", targetUserID))
+	logger.Debug(fmt.Sprintf("GetUsername: Fetching username for userID=%s", targetUserID.String()))
 	username, err := h.useCases.GetUsername(targetUserID)
 	if err != nil {
 		logger.Error(err.Error())
@@ -369,7 +376,7 @@ func (h v1HandlersImplementation) GetUsername(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	logger.Info("GetUsername: Username successfully fetched for userID: " + strconv.Itoa(targetUserID))
+	logger.Info("GetUsername: Username successfully fetched for userID: " + targetUserID.String())
 	json.NewEncoder(w).Encode(models.UsernameResponse{Username: username})
 }
 
@@ -383,14 +390,14 @@ func (h v1HandlersImplementation) GetBalance(w http.ResponseWriter, r *http.Requ
 	}
 	defer r.Body.Close()
 
-	initiatorID, ok := r.Context().Value(userIDKey).(int)
+	initiatorID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("GetBalance: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-	targetUserID, err := h.parseQueryInt(r, "id")
+	targetUserID, err := h.parseQueryUUID(r, "id")
 	if err != nil {
 		logger.Error("GetBalance: User ID is required")
 		h.errorResponse(w, http.StatusBadRequest, "User ID is required")
@@ -399,7 +406,8 @@ func (h v1HandlersImplementation) GetBalance(w http.ResponseWriter, r *http.Requ
 
 	logger.Debug(
 		fmt.Sprintf(
-			"GetBalance: Fetching balances for targetUserID=%d by initiatorID=%d", targetUserID, initiatorID,
+			"GetBalance: Fetching balances for targetUserID=%s by initiatorID=%s", targetUserID.String(),
+			initiatorID.String(),
 		),
 	)
 
@@ -426,7 +434,7 @@ func (h v1HandlersImplementation) Transaction(w http.ResponseWriter, r *http.Req
 	}
 	defer r.Body.Close()
 
-	userID, ok := r.Context().Value(userIDKey).(int)
+	userID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("Transaction: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
@@ -443,7 +451,8 @@ func (h v1HandlersImplementation) Transaction(w http.ResponseWriter, r *http.Req
 
 	logger.Debug(
 		fmt.Sprintf(
-			"Transaction: Processing transfer from %d to %d, currency: %s, amount: %d", req.From, req.To, req.Currency,
+			"Transaction: Processing transfer from %s to %s, currency: %s, amount: %d", req.From.String(),
+			req.To.String(), req.Currency,
 			req.Amount,
 		),
 	)
@@ -470,7 +479,7 @@ func (h v1HandlersImplementation) PrintMoney(w http.ResponseWriter, r *http.Requ
 	}
 	defer r.Body.Close()
 
-	userID, ok := r.Context().Value(userIDKey).(int)
+	userID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("PrintMoney: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
@@ -488,7 +497,7 @@ func (h v1HandlersImplementation) PrintMoney(w http.ResponseWriter, r *http.Requ
 
 	logger.Debug(
 		fmt.Sprintf(
-			"PrintMoney: Processing for receiverID=%d, amount=%d, currency=%s", req.ReceiverID, req.Amount,
+			"PrintMoney: Processing for receiverID=%s, amount=%d, currency=%s", req.ReceiverID.String(), req.Amount,
 			req.Currency,
 		),
 	)
@@ -545,7 +554,7 @@ func (h v1HandlersImplementation) ModifyPermission(w http.ResponseWriter, r *htt
 	}
 	defer r.Body.Close()
 
-	userID, ok := r.Context().Value(userIDKey).(int)
+	userID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("ModifyPermission: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
@@ -561,7 +570,7 @@ func (h v1HandlersImplementation) ModifyPermission(w http.ResponseWriter, r *htt
 
 	logger.Debug(
 		fmt.Sprintf(
-			"ModifyPermission: Changing permission for userID=%d, permissionID=%d, enabled=%v", req.UserID,
+			"ModifyPermission: Changing permission for userID=%s, permissionID=%d, enabled=%v", req.UserID.String(),
 			req.PermissionID, req.Enabled,
 		),
 	)
@@ -588,7 +597,7 @@ func (h v1HandlersImplementation) ChangePassword(w http.ResponseWriter, r *http.
 	}
 	defer r.Body.Close()
 
-	userID, ok := r.Context().Value(userIDKey).(int)
+	userID, ok := r.Context().Value(userIDKey).(uuid.UUID)
 	if !ok {
 		logger.Error("ChangePassword: Unauthorized access (missing userID in context)")
 		h.errorResponse(w, http.StatusUnauthorized, "Unauthorized")
@@ -604,7 +613,8 @@ func (h v1HandlersImplementation) ChangePassword(w http.ResponseWriter, r *http.
 
 	logger.Debug(
 		fmt.Sprintf(
-			"ChangePassword: Attempting password change for userID=%d, targetUserID=%d", userID, req.UserID,
+			"ChangePassword: Attempting password change for userID=%s, targetUserID=%s", userID.String(),
+			req.UserID.String(),
 		),
 	)
 	err := h.useCases.ChangePassword(userID, req.UserID, req.Password)
@@ -666,7 +676,19 @@ func (h v1HandlersImplementation) parseQueryInt(r *http.Request, key string) (in
 	}
 	return strconv.Atoi(value)
 }
+func (h v1HandlersImplementation) parseQueryUUID(r *http.Request, key string) (uuid.UUID, error) {
+	valueStr := r.URL.Query().Get(key)
+	if valueStr == "" {
+		return uuid.Nil, fmt.Errorf("missing parameter: %s", key)
+	}
 
+	parsedUUID, err := uuid.Parse(valueStr)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid UUID format for parameter '%s': %w", key, err)
+	}
+
+	return parsedUUID, nil
+}
 func (h v1HandlersImplementation) errorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(

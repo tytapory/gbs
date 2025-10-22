@@ -9,7 +9,7 @@ services:
       - 8080:8080
 
   db:
-    image: postgres:13
+    image: postgres:18
     restart: always
     environment:
       - POSTGRES_USER=gbs
@@ -18,7 +18,7 @@ services:
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./db/migrations:/migrations
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "sh -c 'pg_isready -U gbs -d gbs_default'"]
       interval: 5s

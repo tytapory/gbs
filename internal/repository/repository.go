@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 
 	"gbs/internal/config"
@@ -23,25 +24,25 @@ const (
 var _ Repository = repositoryImplementation{}
 
 type Repository interface {
-	GetUserPermissions(q Querier, userID int) ([]models.Permission, error)
-	GetUserIDAndPasswordHash(q Querier, username string) (int, string, error)
-	RegisterUser(q Querier, username string, passwordHash string) (int, error)
-	GetBalances(q Querier, userID int) ([]models.Balance, error)
-	GetBalanceByCurrencyAndLock(q Querier, userID int, currency string) (models.Balance, error)
-	AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int64) (int64, error)
-	SetBalance(q Querier, userID int, currency string, amount int64) error
+	GetUserPermissions(q Querier, userID uuid.UUID) ([]models.Permission, error)
+	GetUserIDAndPasswordHash(q Querier, username string) (uuid.UUID, string, error)
+	RegisterUser(q Querier, username string, passwordHash string) (uuid.UUID, error)
+	GetBalances(q Querier, userID uuid.UUID) ([]models.Balance, error)
+	GetBalanceByCurrencyAndLock(q Querier, userID uuid.UUID, currency string) (models.Balance, error)
+	AddBalanceAndReturnNew(q Querier, userID uuid.UUID, currency string, amount int64) (int64, error)
+	SetBalance(q Querier, userID uuid.UUID, currency string, amount int64) error
 	LogTransaction(q Querier, log models.Transaction) error
-	GetUserID(q Querier, username string) (int, error)
-	GetUsername(q Querier, userID int) (string, error)
-	GetTransactionCount(q Querier, userID int) (int64, error)
-	GetTransactionsHistory(q Querier, userID, limit, offset int) ([]models.Transaction, error)
-	SetPermission(q Querier, userID int, permission models.Permission) error
-	UnsetPermission(q Querier, userID int, permission models.Permission) error
-	ChangePassword(q Querier, userID int, hash string) error
+	GetUserID(q Querier, username string) (uuid.UUID, error)
+	GetUsername(q Querier, userID uuid.UUID) (string, error)
+	GetTransactionCount(q Querier, userID uuid.UUID) (int64, error)
+	GetTransactionsHistory(q Querier, userID uuid.UUID, limit, offset int) ([]models.Transaction, error)
+	SetPermission(q Querier, userID uuid.UUID, permission models.Permission) error
+	UnsetPermission(q Querier, userID uuid.UUID, permission models.Permission) error
+	ChangePassword(q Querier, userID uuid.UUID, hash string) error
 	DoesDefaultUsersInitialized(q Querier) (bool, error)
-	CreateRefreshToken(q Querier, userID int, expiresAt time.Time) (string, error)
-	InvalidateRefreshTokens(q Querier, userID int) error
-	GetUserByRefreshToken(q Querier, token string) (int, error)
+	CreateRefreshToken(q Querier, userID uuid.UUID, expiresAt time.Time) (uuid.UUID, error)
+	InvalidateRefreshTokens(q Querier, userID uuid.UUID) error
+	GetUserByRefreshToken(q Querier, token uuid.UUID) (uuid.UUID, error)
 	NewTransaction() Querier
 	CommitTransaction(q Querier) error
 	RollbackTransaction(q Querier) error
@@ -83,7 +84,7 @@ func NewRepositoryImplementation(databaseConfig config.DatabaseConfig) (Reposito
 	return result, nil
 }
 
-func (r repositoryImplementation) GetUserPermissions(q Querier, userID int) ([]models.Permission, error) {
+func (r repositoryImplementation) GetUserPermissions(q Querier, userID uuid.UUID) ([]models.Permission, error) {
 	rows, err := q.Query(`SELECT permission_id FROM user_permission WHERE user_id = $1`, userID)
 	if err != nil {
 		return nil, r.mapSQLErrorToGolangError(err)
@@ -108,8 +109,8 @@ func (r repositoryImplementation) GetUserPermissions(q Querier, userID int) ([]m
 	return permissions, nil
 }
 
-func (r repositoryImplementation) GetUserIDAndPasswordHash(q Querier, username string) (int, string, error) {
-	var userID int
+func (r repositoryImplementation) GetUserIDAndPasswordHash(q Querier, username string) (uuid.UUID, string, error) {
+	var userID uuid.UUID
 	var passwordHash string
 
 	err := q.QueryRow(`SELECT id, password_hash FROM users WHERE username = $1`, username).Scan(
@@ -119,16 +120,25 @@ func (r repositoryImplementation) GetUserIDAndPasswordHash(q Querier, username s
 	return userID, passwordHash, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) RegisterUser(q Querier, username string, passwordHash string) (int, error) {
-	var userID int
-	err := q.QueryRow(
-		`INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id`,
-		username, passwordHash,
-	).Scan(&userID)
-	return userID, r.mapSQLErrorToGolangError(err)
+func (r repositoryImplementation) RegisterUser(q Querier, username string, passwordHash string) (uuid.UUID, error) {
+	newUserID, err := uuid.NewV7()
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	_, err = q.Exec(
+		`INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)`,
+		newUserID, username, passwordHash,
+	)
+
+	if err != nil {
+		return uuid.Nil, r.mapSQLErrorToGolangError(err)
+	}
+
+	return newUserID, nil
 }
 
-func (r repositoryImplementation) GetBalances(q Querier, userID int) ([]models.Balance, error) {
+func (r repositoryImplementation) GetBalances(q Querier, userID uuid.UUID) ([]models.Balance, error) {
 	rows, err := q.Query(`SELECT balances.currency, balances.amount FROM balances WHERE user_id = $1`, userID)
 	if err != nil {
 		return nil, r.mapSQLErrorToGolangError(err)
@@ -153,7 +163,7 @@ func (r repositoryImplementation) GetBalances(q Querier, userID int) ([]models.B
 	return balances, nil
 }
 
-func (r repositoryImplementation) GetBalanceByCurrencyAndLock(q Querier, userID int, currency string) (
+func (r repositoryImplementation) GetBalanceByCurrencyAndLock(q Querier, userID uuid.UUID, currency string) (
 	models.Balance, error,
 ) {
 	var balance models.Balance
@@ -167,7 +177,7 @@ func (r repositoryImplementation) GetBalanceByCurrencyAndLock(q Querier, userID 
 	return balance, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) SetBalance(q Querier, userID int, currency string, newAmount int64) error {
+func (r repositoryImplementation) SetBalance(q Querier, userID uuid.UUID, currency string, newAmount int64) error {
 	_, err := q.Exec(
 		`UPDATE balances 
         SET amount = $1 
@@ -177,7 +187,7 @@ func (r repositoryImplementation) SetBalance(q Querier, userID int, currency str
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int64) (
+func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID uuid.UUID, currency string, amount int64) (
 	int64, error,
 ) {
 	var newBalance int64
@@ -193,13 +203,20 @@ func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID int, 
 }
 
 func (r repositoryImplementation) LogTransaction(q Querier, log models.Transaction) error {
-	_, err := q.Exec(
+	newLogID, err := uuid.NewV7()
+	if err != nil {
+		return err
+	}
+
+	_, err = q.Exec(
 		`
-	INSERT INTO transaction_logs(
-	    sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency,
-	    amount, fee
+    INSERT INTO transaction_logs(
+        id,
+        sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency,
+        amount, fee
     )
-	VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+    VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		newLogID,
 		log.SenderID,
 		log.ReceiverID,
 		log.InitiatorID,
@@ -211,21 +228,21 @@ func (r repositoryImplementation) LogTransaction(q Querier, log models.Transacti
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetUserID(q Querier, username string) (int, error) {
-	var userID int
+func (r repositoryImplementation) GetUserID(q Querier, username string) (uuid.UUID, error) {
+	var userID uuid.UUID
 	err := q.QueryRow(`SELECT id FROM users WHERE username = $1`, username).Scan(&userID)
 
 	return userID, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetUsername(q Querier, userID int) (string, error) {
+func (r repositoryImplementation) GetUsername(q Querier, userID uuid.UUID) (string, error) {
 	var username string
 	err := q.QueryRow(`SELECT username FROM users WHERE id = $1`, userID).Scan(&username)
 
 	return username, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetTransactionCount(q Querier, userID int) (int64, error) {
+func (r repositoryImplementation) GetTransactionCount(q Querier, userID uuid.UUID) (int64, error) {
 	var amount int64
 	err := q.QueryRow(
 		`
@@ -238,7 +255,7 @@ func (r repositoryImplementation) GetTransactionCount(q Querier, userID int) (in
 	return amount, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetTransactionsHistory(q Querier, userID, limit, offset int) (
+func (r repositoryImplementation) GetTransactionsHistory(q Querier, userID uuid.UUID, limit, offset int) (
 	[]models.Transaction, error,
 ) {
 	rows, err := q.Query(
@@ -290,7 +307,7 @@ func (r repositoryImplementation) GetTransactionsHistory(q Querier, userID, limi
 	return transactions, nil
 }
 
-func (r repositoryImplementation) SetPermission(q Querier, userID int, permission models.Permission) error {
+func (r repositoryImplementation) SetPermission(q Querier, userID uuid.UUID, permission models.Permission) error {
 	_, err := q.Exec(
 		`
 	INSERT INTO user_permission (user_id, permission_id)
@@ -301,7 +318,7 @@ func (r repositoryImplementation) SetPermission(q Querier, userID int, permissio
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) UnsetPermission(q Querier, userID int, permission models.Permission) error {
+func (r repositoryImplementation) UnsetPermission(q Querier, userID uuid.UUID, permission models.Permission) error {
 	_, err := q.Exec(
 		`
 	DELETE FROM user_permission
@@ -312,7 +329,7 @@ func (r repositoryImplementation) UnsetPermission(q Querier, userID int, permiss
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) ChangePassword(q Querier, userID int, hash string) error {
+func (r repositoryImplementation) ChangePassword(q Querier, userID uuid.UUID, hash string) error {
 	_, err := q.Exec(
 		`
 	UPDATE users
@@ -326,25 +343,35 @@ func (r repositoryImplementation) ChangePassword(q Querier, userID int, hash str
 func (r repositoryImplementation) DoesDefaultUsersInitialized(q Querier) (bool, error) {
 	var hash sql.NullString
 
-	row := q.QueryRow("SELECT password_hash FROM users WHERE id = 1")
+	row := q.QueryRow("SELECT password_hash FROM users WHERE username = 'adm'")
 	err := row.Scan(&hash)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
 
 	return hash.Valid && hash.String != "", r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) CreateRefreshToken(q Querier, userID int, expiresAt time.Time) (string, error) {
-	var token string
-	err := q.QueryRow(
-		`
-	INSERT INTO refresh_tokens(user_id, expires_at)
-    VALUES ($1, $2)
-        RETURNING token`, userID, expiresAt,
-	).Scan(&token)
+func (r repositoryImplementation) CreateRefreshToken(q Querier, userID uuid.UUID, expiresAt time.Time) (
+	uuid.UUID, error,
+) {
+	newToken, err := uuid.NewV7()
+	if err != nil {
+		return uuid.Nil, err
+	}
 
-	return token, r.mapSQLErrorToGolangError(err)
+	_, err = q.Exec(
+		`INSERT INTO refresh_tokens(token, user_id, expires_at) VALUES ($1, $2, $3)`,
+		newToken, userID, expiresAt,
+	)
+	if err != nil {
+		return uuid.Nil, r.mapSQLErrorToGolangError(err)
+	}
+
+	return newToken, nil
 }
-
-func (r repositoryImplementation) InvalidateRefreshTokens(q Querier, userID int) error {
+func (r repositoryImplementation) InvalidateRefreshTokens(q Querier, userID uuid.UUID) error {
 	_, err := q.Exec(
 		`
 	UPDATE refresh_tokens
@@ -357,8 +384,8 @@ func (r repositoryImplementation) InvalidateRefreshTokens(q Querier, userID int)
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetUserByRefreshToken(q Querier, token string) (int, error) {
-	var userID int
+func (r repositoryImplementation) GetUserByRefreshToken(q Querier, token uuid.UUID) (uuid.UUID, error) {
+	var userID uuid.UUID
 	err := q.QueryRow(
 		`
 	SELECT user_id 
