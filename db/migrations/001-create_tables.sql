@@ -23,40 +23,16 @@ CREATE TABLE user_permission(
   CONSTRAINT unique_permissions UNIQUE (user_id, permission_id)
 );
 
-CREATE TABLE recovery_code(
-  user_id integer NOT NULL REFERENCES users(id),
-  code varchar(12) NOT NULL,
-  valid_until timestamp NOT NULL,
-  CONSTRAINT unique_code UNIQUE (user_id, code)
-);
-
-CREATE TABLE error_description(
-  code integer NOT NULL UNIQUE,
-  description text NOT NULL
-);
-
 CREATE TABLE transaction_logs(
   id serial PRIMARY KEY,
-  sender_id integer NOT NULL REFERENCES users(id),
+  sender_id integer REFERENCES users(id),
   receiver_id integer NOT NULL REFERENCES users(id),
   initiator_id integer NOT NULL REFERENCES users(id),
-  transaction_status integer REFERENCES error_description(code),
-  sender_balance_after bigint DEFAULT 0,
-  receiver_balance_after bigint DEFAULT 0,
+  sender_balance_after bigint DEFAULT NULL,
+  receiver_balance_after bigint NOT NULL,
   currency varchar(64) NOT NULL,
   amount bigint NOT NULL,
   fee bigint NOT NULL,
-  created_at timestamp NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE print_money_logs(
-  id serial PRIMARY KEY,
-  receiver_id integer NOT NULL REFERENCES users(id),
-  initiator_id integer NOT NULL REFERENCES users(id),
-  print_status integer REFERENCES error_description(code),
-  receiver_balance_after bigint DEFAULT 0,
-  currency varchar(64) NOT NULL,
-  amount bigint NOT NULL,
   created_at timestamp NOT NULL DEFAULT NOW()
 );
 

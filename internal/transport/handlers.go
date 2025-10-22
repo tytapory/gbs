@@ -172,7 +172,7 @@ func (h v1HandlersImplementation) Register(w http.ResponseWriter, r *http.Reques
 
 	initiatorID, _ := r.Context().Value(userIDKey).(int)
 
-	result, err := h.useCases.RegisterUser(req.Username, req.Password, initiatorID)
+	result, err := h.useCases.Register(req.Username, req.Password, initiatorID)
 	if err != nil || result.Token == "" || result.RefreshToken == "" {
 		logger.Error("Register: Authentication failed for username: " + req.Username + " - " + err.Error())
 		h.rateLimiter.RegisterFailedLoginAttempt(req.Username)

@@ -12,6 +12,24 @@ type PermissionError struct {
 
 func (e PermissionError) Error() string { return e.Message }
 
+type SenderPermissionError struct {
+	Message string
+}
+
+func (e SenderPermissionError) Error() string { return e.Message }
+
+type RecipientPermissionError struct {
+	Message string
+}
+
+func (e RecipientPermissionError) Error() string { return e.Message }
+
+type InitiatorPermissionError struct {
+	Message string
+}
+
+func (e InitiatorPermissionError) Error() string { return e.Message }
+
 type NotFoundError struct {
 	Message string
 }
@@ -35,3 +53,21 @@ type UnprocessableEntityError struct {
 }
 
 func (e UnprocessableEntityError) Error() string { return e.Message }
+
+type InvalidUsernameError struct {
+	Message string
+}
+
+func (e InvalidUsernameError) Error() string { return e.Message }
+
+type InvalidPasswordError struct {
+	Message string
+}
+
+func (e InvalidPasswordError) Error() string { return e.Message }
+
+type NotEnoughFundsError struct {
+	Message string
+}
+
+func (e NotEnoughFundsError) Error() string { return e.Message }

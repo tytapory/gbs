@@ -67,7 +67,7 @@ type DatabaseConfig struct {
 }
 
 type CoreConfig struct {
-	CoreFee int `json:"fee"`
+	CoreFee int64 `json:"fee"`
 }
 
 var dotEnvLocation = "configs/.env"
