@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Permission int
 
@@ -25,14 +29,14 @@ type AuthRequest struct {
 }
 
 type AuthResponse struct {
-	Token              string `json:"token"`
-	TokenExpiry        string `json:"token_expiry"`
-	RefreshToken       string `json:"refresh_token"`
-	RefreshTokenExpiry string `json:"refresh_token_expiry"`
+	Token              string    `json:"token"`
+	TokenExpiry        string    `json:"token_expiry"`
+	RefreshToken       uuid.UUID `json:"refresh_token"`
+	RefreshTokenExpiry string    `json:"refresh_token_expiry"`
 }
 
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken uuid.UUID `json:"refresh_token"`
 }
 
 type RefreshResponse struct {
@@ -49,14 +53,14 @@ type Balance struct {
 }
 
 type TransactionRequest struct {
-	From     int    `json:"from"`
-	To       int    `json:"to"`
-	Currency string `json:"currency"`
-	Amount   int64  `json:"amount"`
+	From     uuid.UUID `json:"from"`
+	To       uuid.UUID `json:"to"`
+	Currency string    `json:"currency"`
+	Amount   int64     `json:"amount"`
 }
 
 type IDResponse struct {
-	ID int `json:"id"`
+	ID uuid.UUID `json:"id"`
 }
 
 type UserPermissionsResponse struct {
@@ -68,15 +72,15 @@ type TransactionAmountResponse struct {
 }
 
 type Transaction struct {
-	SenderID             *int      `json:"sender_id,omitempty"`
-	ReceiverID           int       `json:"receiver_id,omitempty"`
-	InitiatorID          int       `json:"initiator_id,omitempty"`
-	SenderBalanceAfter   *int64    `json:"sender_balance_after,omitempty"`
-	ReceiverBalanceAfter int64     `json:"receiver_balance_after,omitempty"`
-	Currency             string    `json:"currency,omitempty"`
-	Amount               int64     `json:"amount,omitempty"`
-	Fee                  int64     `json:"fee,omitempty"`
-	CreatedAt            time.Time `json:"created_at,omitempty"`
+	SenderID             *uuid.UUID `json:"sender_id,omitempty"`
+	ReceiverID           uuid.UUID  `json:"receiver_id,omitempty"`
+	InitiatorID          uuid.UUID  `json:"initiator_id,omitempty"`
+	SenderBalanceAfter   *int64     `json:"sender_balance_after,omitempty"`
+	ReceiverBalanceAfter int64      `json:"receiver_balance_after,omitempty"`
+	Currency             string     `json:"currency,omitempty"`
+	Amount               int64      `json:"amount,omitempty"`
+	Fee                  *int64     `json:"fee,omitempty"`
+	CreatedAt            time.Time  `json:"created_at,omitempty"`
 }
 
 type TransactionResponse struct {
@@ -84,20 +88,20 @@ type TransactionResponse struct {
 }
 
 type PrintMoneyRequest struct {
-	ReceiverID int    `json:"receiver_id"`
-	Currency   string `json:"currency"`
-	Amount     int64  `json:"amount"`
+	ReceiverID uuid.UUID `json:"receiver_id"`
+	Currency   string    `json:"currency"`
+	Amount     int64     `json:"amount"`
 }
 
 type ModifyPermissionRequest struct {
 	PermissionID Permission `json:"permission_id"`
-	UserID       int        `json:"user_id"`
+	UserID       uuid.UUID  `json:"user_id"`
 	Enabled      bool       `json:"enabled"`
 }
 
 type ChangePasswordRequest struct {
-	UserID   int    `json:"user_id"`
-	Password string `json:"password"`
+	UserID   uuid.UUID `json:"user_id"`
+	Password string    `json:"password"`
 }
 
 type UsernameResponse struct {

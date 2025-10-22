@@ -6,31 +6,31 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"gbs/internal/auth"
 	"gbs/internal/config"
 	"gbs/internal/models"
 	"gbs/internal/repository"
 )
 
-const feesUserID = 2
-
 var _ UseCases = useCasesImplementation{}
 
 type UseCases interface {
-	GetTransactionsHistory(initiatorID, userID, limit, offset int) ([]models.Transaction, error)
-	Register(login, password string, initiatorID int) (models.AuthResponse, error)
+	GetTransactionsHistory(initiatorID, userID uuid.UUID, limit, offset int) ([]models.Transaction, error)
+	Register(login, password string, initiatorID uuid.UUID) (models.AuthResponse, error)
 	Login(login, password string) (models.AuthResponse, error)
-	GetTransactionCount(initiatorID, userID int) (int64, error)
-	GetUserPermissions(userID int) ([]models.Permission, error)
-	GetUserID(username string) (int, error)
-	GetUsername(userID int) (string, error)
-	GetBalances(initiatorID, userID int) ([]models.Balance, error)
-	TransferMoney(senderID, receiverID, initiatorID int, currency string, amount int64) error
-	PrintMoney(receiverID, initiatorID int, amount int64, currency string) error
-	RefreshJWT(refreshToken string) (string, error)
-	TogglePermission(initiatorID, userID int, permissionID models.Permission, enable bool) error
-	ChangePassword(initiatorID, userID int, password string) error
-	GetUserIDFromJWT(tokenString string) (int, error)
+	GetTransactionCount(initiatorID, userID uuid.UUID) (int64, error)
+	GetUserPermissions(userID uuid.UUID) ([]models.Permission, error)
+	GetUserID(username string) (uuid.UUID, error)
+	GetUsername(userID uuid.UUID) (string, error)
+	GetBalances(initiatorID, userID uuid.UUID) ([]models.Balance, error)
+	TransferMoney(senderID, receiverID, initiatorID uuid.UUID, currency string, amount int64) error
+	PrintMoney(receiverID, initiatorID uuid.UUID, amount int64, currency string) error
+	RefreshJWT(refreshToken uuid.UUID) (string, error)
+	TogglePermission(initiatorID, userID uuid.UUID, permissionID models.Permission, enable bool) error
+	ChangePassword(initiatorID, userID uuid.UUID, password string) error
+	GetUserIDFromJWT(tokenString string) (uuid.UUID, error)
 }
 
 type useCasesImplementation struct {
@@ -38,16 +38,29 @@ type useCasesImplementation struct {
 	auth           auth.AuthService
 	securityConfig config.SecurityConfig
 	coreConfig     config.CoreConfig
+
+	feesUserID uuid.UUID
 }
 
 func NewUseCasesImplementation(
 	repo repository.Repository, auth auth.AuthService, securityConfig config.SecurityConfig,
 	coreConfig config.CoreConfig,
-) UseCases {
-	return useCasesImplementation{repo: repo, auth: auth, securityConfig: securityConfig, coreConfig: coreConfig}
+) (UseCases, error) {
+	useCases := useCasesImplementation{repo: repo, auth: auth, securityConfig: securityConfig, coreConfig: coreConfig}
+
+	q := useCases.repo.NewSingleQuery()
+
+	feesUserID, err := useCases.repo.GetUserID(q, "fees")
+	if err != nil {
+		return nil, err
+	}
+
+	useCases.feesUserID = feesUserID
+
+	return useCases, nil
 }
 
-func (u useCasesImplementation) GetTransactionsHistory(initiatorID, userID, limit, offset int) (
+func (u useCasesImplementation) GetTransactionsHistory(initiatorID, userID uuid.UUID, limit, offset int) (
 	[]models.Transaction, error,
 ) {
 	q := u.repo.NewSingleQuery()
@@ -56,8 +69,8 @@ func (u useCasesImplementation) GetTransactionsHistory(initiatorID, userID, limi
 		initiatorPerms, err := u.repo.GetUserPermissions(q, initiatorID)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to get user permissions for initiatorID=%d: %w",
-				initiatorID, err,
+				"failed to get user permissions for initiatorID=%s: %w",
+				initiatorID.String(), err,
 			)
 		}
 
@@ -69,15 +82,15 @@ func (u useCasesImplementation) GetTransactionsHistory(initiatorID, userID, limi
 	history, err := u.repo.GetTransactionsHistory(q, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to get transactions history for userID=%d, initiatorID=%d, limit=%d, offset=%d: %w",
-			userID, initiatorID, limit, offset, err,
+			"failed to get transactions history for userID=%s, initiatorID=%s, limit=%d, offset=%d: %w",
+			userID.String(), initiatorID.String(), limit, offset, err,
 		)
 	}
 
 	return history, nil
 }
 
-func (u useCasesImplementation) Register(login, password string, initiatorID int) (
+func (u useCasesImplementation) Register(login, password string, initiatorID uuid.UUID) (
 	resp models.AuthResponse, err error,
 ) {
 	q := u.repo.NewTransaction()
@@ -178,15 +191,15 @@ func (u useCasesImplementation) Login(login, password string) (resp models.AuthR
 	return
 }
 
-func (u useCasesImplementation) GetTransactionCount(initiatorID, userID int) (int64, error) {
+func (u useCasesImplementation) GetTransactionCount(initiatorID, userID uuid.UUID) (int64, error) {
 	q := u.repo.NewSingleQuery()
 
 	if initiatorID != userID {
 		initiatorPerms, err := u.repo.GetUserPermissions(q, initiatorID)
 		if err != nil {
 			return 0, fmt.Errorf(
-				"failed to get user permissions for initiatorID=%d: %w",
-				initiatorID, err,
+				"failed to get user permissions for initiatorID=%s: %w",
+				initiatorID.String(), err,
 			)
 		}
 
@@ -198,34 +211,34 @@ func (u useCasesImplementation) GetTransactionCount(initiatorID, userID int) (in
 	count, err := u.repo.GetTransactionCount(q, userID)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"failed to get transactions count for userID=%d, initiatorID=%d: %w",
-			userID, initiatorID, err,
+			"failed to get transactions count for userID=%s, initiatorID=%s: %w",
+			userID.String(), initiatorID.String(), err,
 		)
 	}
 
 	return count, nil
 }
 
-func (u useCasesImplementation) GetUserPermissions(userID int) ([]models.Permission, error) {
+func (u useCasesImplementation) GetUserPermissions(userID uuid.UUID) ([]models.Permission, error) {
 	q := u.repo.NewSingleQuery()
 
 	permissions, err := u.repo.GetUserPermissions(q, userID)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to get permissions for userID=%d: %w",
-			userID, err,
+			"failed to get permissions for userID=%s: %w",
+			userID.String(), err,
 		)
 	}
 
 	return permissions, nil
 }
 
-func (u useCasesImplementation) GetUserID(username string) (int, error) {
+func (u useCasesImplementation) GetUserID(username string) (uuid.UUID, error) {
 	q := u.repo.NewSingleQuery()
 
 	userID, err := u.repo.GetUserID(q, username)
 	if err != nil {
-		return 0, fmt.Errorf(
+		return uuid.UUID{}, fmt.Errorf(
 			"failed to get userID for username=%s: %w",
 			username, err,
 		)
@@ -234,29 +247,29 @@ func (u useCasesImplementation) GetUserID(username string) (int, error) {
 	return userID, nil
 }
 
-func (u useCasesImplementation) GetUsername(userID int) (string, error) {
+func (u useCasesImplementation) GetUsername(userID uuid.UUID) (string, error) {
 	q := u.repo.NewSingleQuery()
 
 	username, err := u.repo.GetUsername(q, userID)
 	if err != nil {
 		return "", fmt.Errorf(
-			"failed to get username for userID=%d: %w",
-			userID, err,
+			"failed to get username for userID=%s: %w",
+			userID.String(), err,
 		)
 	}
 
 	return username, nil
 }
 
-func (u useCasesImplementation) GetBalances(initiatorID, userID int) ([]models.Balance, error) {
+func (u useCasesImplementation) GetBalances(initiatorID, userID uuid.UUID) ([]models.Balance, error) {
 	q := u.repo.NewSingleQuery()
 
 	if initiatorID != userID {
 		initiatorPerms, err := u.repo.GetUserPermissions(q, initiatorID)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to get user permissions for initiatorID=%d: %w",
-				initiatorID, err,
+				"failed to get user permissions for initiatorID=%s: %w",
+				initiatorID.String(), err,
 			)
 		}
 
@@ -268,8 +281,8 @@ func (u useCasesImplementation) GetBalances(initiatorID, userID int) ([]models.B
 	balances, err := u.repo.GetBalances(q, userID)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to get balances for initiatorID=%d, userID=%d: %w",
-			initiatorID, userID, err,
+			"failed to get balances for initiatorID=%s, userID=%s: %w",
+			initiatorID.String(), userID.String(), err,
 		)
 	}
 
@@ -277,7 +290,7 @@ func (u useCasesImplementation) GetBalances(initiatorID, userID int) ([]models.B
 }
 
 func (u useCasesImplementation) TransferMoney(
-	senderID, receiverID, initiatorID int, currency string, amount int64,
+	senderID, receiverID, initiatorID uuid.UUID, currency string, amount int64,
 ) (err error) {
 	q := u.repo.NewTransaction()
 
@@ -296,8 +309,8 @@ func (u useCasesImplementation) TransferMoney(
 	senderBalance, err := u.repo.GetBalanceByCurrencyAndLock(q, senderID, currency)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to get balance for senderID=%d, currency=%s: %w",
-			senderID, currency, err,
+			"failed to get balance for senderID=%s, currency=%s: %w",
+			senderID.String(), currency, err,
 		)
 
 		return
@@ -312,8 +325,8 @@ func (u useCasesImplementation) TransferMoney(
 	err = u.repo.SetBalance(q, senderID, currency, senderBalance.Amount)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to update balance for senderID=%d, currency=%s: %w",
-			senderID, currency, err,
+			"failed to update balance for senderID=%s, currency=%s: %w",
+			senderID.String(), currency, err,
 		)
 
 		return
@@ -323,18 +336,18 @@ func (u useCasesImplementation) TransferMoney(
 	newReceiverBalance, err := u.repo.AddBalanceAndReturnNew(q, receiverID, currency, amount-commissionAmount)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to update balance for receiverID=%d, currency=%s: %w",
-			receiverID, currency, err,
+			"failed to update balance for receiverID=%s, currency=%s: %w",
+			receiverID.String(), currency, err,
 		)
 
 		return
 	}
 
-	_, err = u.repo.AddBalanceAndReturnNew(q, feesUserID, currency, amount-commissionAmount)
+	_, err = u.repo.AddBalanceAndReturnNew(q, u.feesUserID, currency, amount-commissionAmount)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to update balance for receiverID=%d, currency=%s: %w",
-			feesUserID, currency, err,
+			"failed to update balance for receiverID=%s, currency=%s: %w",
+			u.feesUserID.String(), currency, err,
 		)
 
 		return
@@ -348,7 +361,7 @@ func (u useCasesImplementation) TransferMoney(
 		ReceiverBalanceAfter: newReceiverBalance,
 		Currency:             currency,
 		Amount:               amount,
-		Fee:                  commissionAmount,
+		Fee:                  &commissionAmount,
 		CreatedAt:            time.Now(),
 	}
 
@@ -368,14 +381,16 @@ func (u useCasesImplementation) TransferMoney(
 	return
 }
 
-func (u useCasesImplementation) PrintMoney(receiverID, initiatorID int, amount int64, currency string) (err error) {
+func (u useCasesImplementation) PrintMoney(
+	receiverID, initiatorID uuid.UUID, amount int64, currency string,
+) (err error) {
 	q := u.repo.NewSingleQuery()
 
 	initiatorPermissions, err := u.repo.GetUserPermissions(q, initiatorID)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to get permissions for initiatorID=%d: %w",
-			initiatorID, err,
+			"failed to get permissions for initiatorID=%s: %w",
+			initiatorID.String(), err,
 		)
 
 		return
@@ -400,8 +415,8 @@ func (u useCasesImplementation) PrintMoney(receiverID, initiatorID int, amount i
 	newReceiverBalance, err := u.repo.AddBalanceAndReturnNew(q, receiverID, currency, amount)
 	if err != nil {
 		err = fmt.Errorf(
-			"failed to update balance for receiverID=%d, currency=%s: %w",
-			receiverID, currency, err,
+			"failed to update balance for receiverID=%s, currency=%s: %w",
+			receiverID.String(), currency, err,
 		)
 
 		return
@@ -413,7 +428,6 @@ func (u useCasesImplementation) PrintMoney(receiverID, initiatorID int, amount i
 		ReceiverBalanceAfter: newReceiverBalance,
 		Currency:             currency,
 		Amount:               amount,
-		Fee:                  0,
 		CreatedAt:            time.Now(),
 	}
 
@@ -433,7 +447,7 @@ func (u useCasesImplementation) PrintMoney(receiverID, initiatorID int, amount i
 	return
 }
 
-func (u useCasesImplementation) RefreshJWT(refreshToken string) (string, error) {
+func (u useCasesImplementation) RefreshJWT(refreshToken uuid.UUID) (string, error) {
 	q := u.repo.NewSingleQuery()
 
 	userID, err := u.repo.GetUserByRefreshToken(q, refreshToken)
@@ -450,15 +464,15 @@ func (u useCasesImplementation) RefreshJWT(refreshToken string) (string, error) 
 }
 
 func (u useCasesImplementation) TogglePermission(
-	initiatorID, userID int, permissionID models.Permission, enable bool,
+	initiatorID, userID uuid.UUID, permissionID models.Permission, enable bool,
 ) error {
 	q := u.repo.NewSingleQuery()
 
 	initiatorPermissions, err := u.repo.GetUserPermissions(q, initiatorID)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to get permissions for initiatorID=%d: %w",
-			initiatorID, err,
+			"failed to get permissions for initiatorID=%s: %w",
+			initiatorID.String(), err,
 		)
 	}
 
@@ -473,15 +487,15 @@ func (u useCasesImplementation) TogglePermission(
 	}
 }
 
-func (u useCasesImplementation) ChangePassword(initiatorID, userID int, password string) (err error) {
+func (u useCasesImplementation) ChangePassword(initiatorID, userID uuid.UUID, password string) (err error) {
 	if initiatorID != userID {
 		var initiatorPerms []models.Permission
 
 		initiatorPerms, err = u.repo.GetUserPermissions(u.repo.NewSingleQuery(), initiatorID)
 		if err != nil {
 			err = fmt.Errorf(
-				"failed to get user permissions for initiatorID=%d: %w",
-				initiatorID, err,
+				"failed to get user permissions for initiatorID=%s: %w",
+				initiatorID.String(), err,
 			)
 
 			return
@@ -526,14 +540,14 @@ func (u useCasesImplementation) ChangePassword(initiatorID, userID int, password
 	return
 }
 
-func (u useCasesImplementation) GetUserIDFromJWT(tokenString string) (int, error) {
+func (u useCasesImplementation) GetUserIDFromJWT(tokenString string) (uuid.UUID, error) {
 	return u.auth.GetUserIDFromJWT(tokenString)
 }
 
-func (u useCasesImplementation) checkRegistrationPermission(q repository.Querier, initiatorID int) error {
+func (u useCasesImplementation) checkRegistrationPermission(q repository.Querier, initiatorID uuid.UUID) error {
 	initiatorPerms, err := u.repo.GetUserPermissions(q, initiatorID)
 	if err != nil {
-		err = fmt.Errorf("failed to get user permissions for initiatorID=%d: %w", initiatorID, err)
+		err = fmt.Errorf("failed to get user permissions for initiatorID=%s: %w", initiatorID.String(), err)
 
 		return err
 	}
@@ -548,15 +562,25 @@ func (u useCasesImplementation) checkRegistrationPermission(q repository.Querier
 }
 
 func (u useCasesImplementation) checkTransactionPermission(
-	q repository.Querier, senderID int, receiverID int, initiatorID int,
+	q repository.Querier, senderID, receiverID, initiatorID uuid.UUID,
 ) error {
-	senderPerms, err := u.repo.GetUserPermissions(q, senderID)
+	initiatorPerms, err := u.repo.GetUserPermissions(q, initiatorID)
 	if err != nil {
-		return fmt.Errorf("failed to get sender permissions for senderID=%d: %w", senderID, err)
+		return fmt.Errorf("failed to get sender permissions for senderID=%s: %w", senderID.String(), err)
 	}
 
-	if u.hasPermission(senderPerms, []models.Permission{models.Administrator, models.ManageFunds}) {
+	if u.hasPermission(initiatorPerms, []models.Permission{models.Administrator, models.ManageFunds}) {
 		return nil
+	}
+
+	var senderPerms []models.Permission
+	if initiatorID == senderID {
+		senderPerms = initiatorPerms
+	} else {
+		senderPerms, err = u.repo.GetUserPermissions(q, senderID)
+		if err != nil {
+			return fmt.Errorf("failed to get sender permissions for senderID=%s: %w", senderID.String(), err)
+		}
 	}
 
 	if !u.hasPermission(senderPerms, []models.Permission{models.SendFunds}) {
@@ -567,7 +591,7 @@ func (u useCasesImplementation) checkTransactionPermission(
 
 	receiverPerms, err := u.repo.GetUserPermissions(q, receiverID)
 	if err != nil {
-		return fmt.Errorf("failed to get receiver permissions for receiverID=%d: %w", receiverID, err)
+		return fmt.Errorf("failed to get receiver permissions for receiverID=%s: %w", receiverID.String(), err)
 	}
 
 	if !u.hasPermission(receiverPerms, []models.Permission{models.ReceiveFunds}) {
@@ -593,15 +617,15 @@ func (u useCasesImplementation) hasPermission(
 	return false
 }
 
-func (u useCasesImplementation) generateRefreshToken(q repository.Querier, userID int) (string, error) {
+func (u useCasesImplementation) generateRefreshToken(q repository.Querier, userID uuid.UUID) (uuid.UUID, error) {
 	duration, err := time.ParseDuration(u.securityConfig.RefreshTokenExpiry)
 	if err != nil {
-		return "", &models.ServerFaultError{Message: "invalid refresh token lifespan"}
+		return uuid.UUID{}, &models.ServerFaultError{Message: "invalid refresh token lifespan"}
 	}
 
 	newRefreshToken, err := u.repo.CreateRefreshToken(q, userID, time.Now().Add(duration))
 	if err != nil {
-		return "", err
+		return uuid.UUID{}, err
 	}
 
 	return newRefreshToken, nil
