@@ -343,7 +343,7 @@ func (u useCasesImplementation) TransferMoney(
 		return
 	}
 
-	_, err = u.repo.AddBalanceAndReturnNew(q, u.feesUserID, currency, amount-commissionAmount)
+	_, err = u.repo.AddBalanceAndReturnNew(q, u.feesUserID, currency, commissionAmount)
 	if err != nil {
 		err = fmt.Errorf(
 			"failed to update balance for receiverID=%s, currency=%s: %w",

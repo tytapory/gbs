@@ -32,7 +32,7 @@ CREATE TABLE transaction_logs (
     receiver_balance_after bigint NOT NULL CHECK (receiver_balance_after >= 0),
     currency varchar(64) NOT NULL,
     amount bigint NOT NULL CHECK (amount > 0),
-    fee bigint NOT NULL CHECK (fee >= 0),
+    fee bigint DEFAULT NULL CHECK (fee IS NULL OR fee >= 0),
     created_at timestamp NOT NULL DEFAULT NOW()
 );
 
