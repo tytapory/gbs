@@ -68,15 +68,15 @@ type TransactionAmountResponse struct {
 }
 
 type Transaction struct {
-	SenderID             int       `json:"sender_id,omitempty"`
+	SenderID             *int      `json:"sender_id,omitempty"`
 	ReceiverID           int       `json:"receiver_id,omitempty"`
 	InitiatorID          int       `json:"initiator_id,omitempty"`
 	TransactionStatus    int       `json:"transaction_status,omitempty"`
-	SenderBalanceAfter   int       `json:"sender_balance_after,omitempty"`
-	ReceiverBalanceAfter int       `json:"receiver_balance_after,omitempty"`
+	SenderBalanceAfter   *int64    `json:"sender_balance_after,omitempty"`
+	ReceiverBalanceAfter int64     `json:"receiver_balance_after,omitempty"`
 	Currency             string    `json:"currency,omitempty"`
-	Amount               int       `json:"amount,omitempty"`
-	Fee                  int       `json:"fee,omitempty"`
+	Amount               int64     `json:"amount,omitempty"`
+	Fee                  int64     `json:"fee,omitempty"`
 	CreatedAt            time.Time `json:"created_at,omitempty"`
 }
 

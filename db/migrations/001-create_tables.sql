@@ -37,26 +37,15 @@ CREATE TABLE error_description(
 
 CREATE TABLE transaction_logs(
   id serial PRIMARY KEY,
-  sender_id integer NOT NULL REFERENCES users(id),
+  sender_id integer REFERENCES users(id),
   receiver_id integer NOT NULL REFERENCES users(id),
   initiator_id integer NOT NULL REFERENCES users(id),
   transaction_status integer REFERENCES error_description(code),
-  sender_balance_after bigint DEFAULT 0,
-  receiver_balance_after bigint DEFAULT 0,
+  sender_balance_after bigint DEFAULT NULL,
+  receiver_balance_after bigint NOT NULL,
   currency varchar(64) NOT NULL,
   amount bigint NOT NULL,
   fee bigint NOT NULL,
-  created_at timestamp NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE print_money_logs(
-  id serial PRIMARY KEY,
-  receiver_id integer NOT NULL REFERENCES users(id),
-  initiator_id integer NOT NULL REFERENCES users(id),
-  print_status integer REFERENCES error_description(code),
-  receiver_balance_after bigint DEFAULT 0,
-  currency varchar(64) NOT NULL,
-  amount bigint NOT NULL,
   created_at timestamp NOT NULL DEFAULT NOW()
 );
 
