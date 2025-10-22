@@ -419,7 +419,7 @@ func (r repositoryImplementation) mapSQLErrorToGolangError(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case PgUniqueViolation:
-			return &models.ConflictError{Message: "Conflict: " + pgErr.Message} // Можно, блядь, `pgErr.Detail` добавить, если хочешь.
+			return &models.ConflictError{Message: "Conflict: " + pgErr.Message}
 
 		case PgForeignKeyViolation:
 			return &models.NotFoundError{Message: "Related entity not found: " + pgErr.Message}
