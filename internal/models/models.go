@@ -45,14 +45,14 @@ type BalanceResponse struct {
 
 type Balance struct {
 	Currency string `json:"currency"`
-	Amount   string `json:"amount"`
+	Amount   int64  `json:"amount"`
 }
 
 type TransactionRequest struct {
 	From     int    `json:"from"`
 	To       int    `json:"to"`
 	Currency string `json:"currency"`
-	Amount   int    `json:"amount"`
+	Amount   int64  `json:"amount"`
 }
 
 type IDResponse struct {
@@ -64,14 +64,13 @@ type UserPermissionsResponse struct {
 }
 
 type TransactionAmountResponse struct {
-	Amount int `json:"amount"`
+	Amount int64 `json:"amount"`
 }
 
 type Transaction struct {
 	SenderID             *int      `json:"sender_id,omitempty"`
 	ReceiverID           int       `json:"receiver_id,omitempty"`
 	InitiatorID          int       `json:"initiator_id,omitempty"`
-	TransactionStatus    int       `json:"transaction_status,omitempty"`
 	SenderBalanceAfter   *int64    `json:"sender_balance_after,omitempty"`
 	ReceiverBalanceAfter int64     `json:"receiver_balance_after,omitempty"`
 	Currency             string    `json:"currency,omitempty"`
@@ -87,7 +86,7 @@ type TransactionResponse struct {
 type PrintMoneyRequest struct {
 	ReceiverID int    `json:"receiver_id"`
 	Currency   string `json:"currency"`
-	Amount     int    `json:"amount"`
+	Amount     int64  `json:"amount"`
 }
 
 type ModifyPermissionRequest struct {

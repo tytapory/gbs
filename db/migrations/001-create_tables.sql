@@ -40,7 +40,6 @@ CREATE TABLE transaction_logs(
   sender_id integer REFERENCES users(id),
   receiver_id integer NOT NULL REFERENCES users(id),
   initiator_id integer NOT NULL REFERENCES users(id),
-  transaction_status integer REFERENCES error_description(code),
   sender_balance_after bigint DEFAULT NULL,
   receiver_balance_after bigint NOT NULL,
   currency varchar(64) NOT NULL,

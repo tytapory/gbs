@@ -28,8 +28,8 @@ type Repository interface {
 	RegisterUser(q Querier, username string, passwordHash string) (int, error)
 	GetBalances(q Querier, userID int) ([]models.Balance, error)
 	GetBalanceByCurrencyAndLock(q Querier, userID int, currency string) (models.Balance, error)
-	AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int) (int, error)
-	SetBalance(q Querier, userID int, currency string, amount int) error
+	AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int64) (int64, error)
+	SetBalance(q Querier, userID int, currency string, amount int64) error
 	LogTransaction(q Querier, log models.Transaction) error
 	GetUserID(q Querier, username string) (int, error)
 	GetUsername(q Querier, userID int) (string, error)
@@ -45,6 +45,7 @@ type Repository interface {
 	NewTransaction() Querier
 	CommitTransaction(q Querier) error
 	RollbackTransaction(q Querier) error
+	NewSingleQuery() Querier
 }
 
 type Querier interface {
@@ -166,21 +167,20 @@ func (r repositoryImplementation) GetBalanceByCurrencyAndLock(q Querier, userID 
 	return balance, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) SetBalance(q Querier, userID int, currency string, amount int) error {
+func (r repositoryImplementation) SetBalance(q Querier, userID int, currency string, newAmount int64) error {
 	_, err := q.Exec(
-		`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)
-             ON CONFLICT (user_id, currency) 
-             DO UPDATE SET amount = EXCLUDED.amount`,
-		userID, currency, amount,
+		`UPDATE balances 
+        SET amount = $1 
+        WHERE user_id = $2 AND currency = $3`,
+		newAmount, userID, currency,
 	)
-
 	return r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int) (
-	int, error,
+func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID int, currency string, amount int64) (
+	int64, error,
 ) {
-	var newBalance int
+	var newBalance int64
 	err := q.QueryRow(
 		`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)
              ON CONFLICT (user_id, currency) 
@@ -196,15 +196,13 @@ func (r repositoryImplementation) LogTransaction(q Querier, log models.Transacti
 	_, err := q.Exec(
 		`
 	INSERT INTO transaction_logs(
-	    sender_id, receiver_id, initiator_id,
-	    transaction_status, sender_balance_after, receiver_balance_after, currency,
+	    sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency,
 	    amount, fee
     )
 	VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		log.SenderID,
 		log.ReceiverID,
 		log.InitiatorID,
-		log.TransactionStatus,
 		log.SenderBalanceAfter,
 		log.ReceiverBalanceAfter,
 		log.Currency, log.Amount, log.Fee,
@@ -233,8 +231,7 @@ func (r repositoryImplementation) GetTransactionCount(q Querier, userID int) (in
 		`
 	    SELECT COUNT(*)
 	    FROM transaction_logs
-	    WHERE (sender_id = $1 OR receiver_id = $1 OR initiator_id = $1)
-	      AND transaction_status = 100 OR transaction_status = 200`,
+	    WHERE sender_id = $1 OR receiver_id = $1 OR initiator_id = $1`,
 		userID,
 	).Scan(&amount)
 
@@ -255,8 +252,7 @@ func (r repositoryImplementation) GetTransactionsHistory(q Querier, userID, limi
 	    transaction_logs.fee,
 	    transaction_logs.created_at
 	FROM transaction_logs
-	WHERE (transaction_logs.sender_id = $1 OR transaction_logs.receiver_id = $1 OR transaction_logs.initiator_id = $1)
-	  AND transaction_logs.transaction_status = 100 OR transaction_logs.transaction_status = 200
+	WHERE transaction_logs.sender_id = $1 OR transaction_logs.receiver_id = $1 OR transaction_logs.initiator_id = $1
 	
 	ORDER BY created_at DESC
 	OFFSET $2 LIMIT $3`, userID, offset, limit,
@@ -404,6 +400,10 @@ func (r repositoryImplementation) RollbackTransaction(q Querier) error {
 
 	err := tx.Rollback()
 	return r.mapSQLErrorToGolangError(err)
+}
+
+func (r repositoryImplementation) NewSingleQuery() Querier {
+	return r.db
 }
 
 func (r repositoryImplementation) mapSQLErrorToGolangError(err error) error {
