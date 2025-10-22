@@ -48,23 +48,8 @@ func Run() {
 		logger.Info("#############################################")
 		logger.Info("password for fees : " + feesPassword)
 		logger.Info("#############################################")
-		registrationPassword := generatePassword(16)
-		err = useCases.ChangePassword(1, 3, registrationPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for registration : " + registrationPassword)
-		logger.Info("#############################################")
-		moneyPrinterPassword := generatePassword(16)
-		err = useCases.ChangePassword(1, 4, moneyPrinterPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for money_printer : " + moneyPrinterPassword)
-		logger.Info("#############################################")
-		logger.Info("Default users initialized (adm, fees, registration, money_printer). Change those passwords ASAP")
+
+		logger.Info("Default users initialized (adm, fees). Change those passwords ASAP")
 	}
 
 	transport.Run(v1Handlers, cfg.Server, cfg.Security)

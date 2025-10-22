@@ -33,7 +33,7 @@ type Repository interface {
 	LogTransaction(q Querier, log models.Transaction) error
 	GetUserID(q Querier, username string) (int, error)
 	GetUsername(q Querier, userID int) (string, error)
-	GetTransactionCount(q Querier, userID int) (int, error)
+	GetTransactionCount(q Querier, userID int) (int64, error)
 	GetTransactionsHistory(q Querier, userID, limit, offset int) ([]models.Transaction, error)
 	SetPermission(q Querier, userID int, permission models.Permission) error
 	UnsetPermission(q Querier, userID int, permission models.Permission) error
@@ -199,7 +199,7 @@ func (r repositoryImplementation) LogTransaction(q Querier, log models.Transacti
 	    sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency,
 	    amount, fee
     )
-	VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+	VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
 		log.SenderID,
 		log.ReceiverID,
 		log.InitiatorID,
@@ -225,8 +225,8 @@ func (r repositoryImplementation) GetUsername(q Querier, userID int) (string, er
 	return username, r.mapSQLErrorToGolangError(err)
 }
 
-func (r repositoryImplementation) GetTransactionCount(q Querier, userID int) (int, error) {
-	var amount int
+func (r repositoryImplementation) GetTransactionCount(q Querier, userID int) (int64, error) {
+	var amount int64
 	err := q.QueryRow(
 		`
 	    SELECT COUNT(*)

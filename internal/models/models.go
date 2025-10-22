@@ -60,7 +60,7 @@ type IDResponse struct {
 }
 
 type UserPermissionsResponse struct {
-	Permissions []int `json:"permissions"`
+	Permissions []Permission `json:"permissions"`
 }
 
 type TransactionAmountResponse struct {
@@ -90,9 +90,9 @@ type PrintMoneyRequest struct {
 }
 
 type ModifyPermissionRequest struct {
-	PermissionID int  `json:"permission_id"`
-	UserID       int  `json:"user_id"`
-	Enabled      bool `json:"enabled"`
+	PermissionID Permission `json:"permission_id"`
+	UserID       int        `json:"user_id"`
+	Enabled      bool       `json:"enabled"`
 }
 
 type ChangePasswordRequest struct {

@@ -12,13 +12,15 @@ import (
 	"gbs/internal/repository"
 )
 
+const feesUserID = 2
+
 var _ UseCases = useCasesImplementation{}
 
 type UseCases interface {
 	GetTransactionsHistory(initiatorID, userID, limit, offset int) ([]models.Transaction, error)
 	Register(login, password string, initiatorID int) (models.AuthResponse, error)
 	Login(login, password string) (models.AuthResponse, error)
-	GetTransactionCount(initiatorID, userID int) (int, error)
+	GetTransactionCount(initiatorID, userID int) (int64, error)
 	GetUserPermissions(userID int) ([]models.Permission, error)
 	GetUserID(username string) (int, error)
 	GetUsername(userID int) (string, error)
@@ -176,7 +178,7 @@ func (u useCasesImplementation) Login(login, password string) (resp models.AuthR
 	return
 }
 
-func (u useCasesImplementation) GetTransactionCount(initiatorID, userID int) (int, error) {
+func (u useCasesImplementation) GetTransactionCount(initiatorID, userID int) (int64, error) {
 	q := u.repo.NewSingleQuery()
 
 	if initiatorID != userID {
@@ -323,6 +325,16 @@ func (u useCasesImplementation) TransferMoney(
 		err = fmt.Errorf(
 			"failed to update balance for receiverID=%d, currency=%s: %w",
 			receiverID, currency, err,
+		)
+
+		return
+	}
+
+	_, err = u.repo.AddBalanceAndReturnNew(q, feesUserID, currency, amount-commissionAmount)
+	if err != nil {
+		err = fmt.Errorf(
+			"failed to update balance for receiverID=%d, currency=%s: %w",
+			feesUserID, currency, err,
 		)
 
 		return
@@ -543,28 +555,24 @@ func (u useCasesImplementation) checkTransactionPermission(
 		return fmt.Errorf("failed to get sender permissions for senderID=%d: %w", senderID, err)
 	}
 
-	if initiatorID != senderID {
-		if !u.hasPermission(senderPerms, []models.Permission{models.Administrator, models.ManageFunds}) {
-			return models.InitiatorPermissionError{
-				Message: "insufficient permissions",
-			}
-		}
-	} else {
-		if !u.hasPermission(senderPerms, []models.Permission{models.SendFunds}) {
-			return models.SenderPermissionError{
-				Message: "insufficient permissions",
-			}
-		}
+	if u.hasPermission(senderPerms, []models.Permission{models.Administrator, models.ManageFunds}) {
+		return nil
+	}
 
-		receiverPerms, err := u.repo.GetUserPermissions(q, receiverID)
-		if err != nil {
-			return fmt.Errorf("failed to get receiver permissions for receiverID=%d: %w", receiverID, err)
+	if !u.hasPermission(senderPerms, []models.Permission{models.SendFunds}) {
+		return models.SenderPermissionError{
+			Message: "insufficient permissions",
 		}
+	}
 
-		if !u.hasPermission(receiverPerms, []models.Permission{models.ReceiveFunds}) {
-			return models.RecipientPermissionError{
-				Message: "insufficient permissions",
-			}
+	receiverPerms, err := u.repo.GetUserPermissions(q, receiverID)
+	if err != nil {
+		return fmt.Errorf("failed to get receiver permissions for receiverID=%d: %w", receiverID, err)
+	}
+
+	if !u.hasPermission(receiverPerms, []models.Permission{models.ReceiveFunds}) {
+		return models.RecipientPermissionError{
+			Message: "insufficient permissions",
 		}
 	}
 

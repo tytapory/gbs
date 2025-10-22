@@ -23,18 +23,6 @@ CREATE TABLE user_permission(
   CONSTRAINT unique_permissions UNIQUE (user_id, permission_id)
 );
 
-CREATE TABLE recovery_code(
-  user_id integer NOT NULL REFERENCES users(id),
-  code varchar(12) NOT NULL,
-  valid_until timestamp NOT NULL,
-  CONSTRAINT unique_code UNIQUE (user_id, code)
-);
-
-CREATE TABLE error_description(
-  code integer NOT NULL UNIQUE,
-  description text NOT NULL
-);
-
 CREATE TABLE transaction_logs(
   id serial PRIMARY KEY,
   sender_id integer REFERENCES users(id),
