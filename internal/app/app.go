@@ -2,10 +2,12 @@ package app
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
 
 	"gbs/internal/auth"
 	"gbs/internal/config"
+	"gbs/internal/models"
 	"gbs/internal/repository"
 	"gbs/internal/transport"
 	"gbs/internal/usecases"
@@ -14,57 +16,70 @@ import (
 
 func Run() {
 	logger.InitializeLoggers("debug", "")
-
 	cfg := config.NewConfigProviderImplementation().Get()
-	repo, err := repository.NewRepositoryImplementation(cfg.Database, cfg.Core)
+	repo, err := repository.NewRepositoryImplementation(cfg.Database)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 	authService := auth.NewAuthServiceImplementation(repo, cfg.Security)
-	useCases := usecases.NewUseCasesImplementation(repo, authService, cfg.Security)
-	rateLimiter := transport.NewRateLimiterImplementation(cfg.Security)
-	v1Handlers := transport.NewV1HandlersImplementation(useCases, rateLimiter)
 
-	doesDefaultUsersInitialized, err := repo.DoesDefaultUsersInitialized()
+	q := repo.NewSingleQuery()
+	initialized, err := repo.DoesDefaultUsersInitialized(q)
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Failed to check initialization status: %s", err.Error()))
+	}
+
+	if !initialized {
+		admPassword := generatePassword(16)
+		admUsername := "adm"
+		admHash, err := authService.GeneratePasswordHash(admPassword)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to generate hash for adm: %s", err.Error()))
+		}
+
+		admUUID, err := repo.RegisterUser(q, admUsername, admHash)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to create user '%s': %s", admUsername, err.Error()))
+		}
+
+		logger.Info(">>> Default password for adm: " + admPassword + " <<<")
+
+		adminPermID := models.Administrator
+		err = repo.SetPermission(q, admUUID, adminPermID)
+		if err != nil {
+			logger.Fatal(
+				fmt.Sprintf(
+					"Failed to grant permission '%d' (Administrator) to user '%s': %s", adminPermID, admUsername,
+					err.Error(),
+				),
+			)
+		}
+
+		logger.Info(fmt.Sprintf("Permission '%d' (Administrator) granted to user '%s'.", adminPermID, admUsername))
+
+		feesPassword := generatePassword(16)
+		feesUsername := "fees"
+		feesHash, err := authService.GeneratePasswordHash(feesPassword)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to generate hash for fees: %s", err.Error()))
+		}
+		_, err = repo.RegisterUser(q, feesUsername, feesHash)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to create user '%s': %s", feesUsername, err.Error()))
+		}
+
+		logger.Info(">>> Default password for fees: " + feesPassword + " <<<")
+	} else {
+		logger.Info("Default users already initialized, skipping.")
+	}
+
+	useCases, err := usecases.NewUseCasesImplementation(repo, authService, cfg.Security, cfg.Core)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 
-	if !doesDefaultUsersInitialized {
-		admPassword := generatePassword(16)
-		err := authService.ChangePassword(1, 1, admPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for adm : " + admPassword)
-		logger.Info("#############################################")
-		feesPassword := generatePassword(16)
-		err = authService.ChangePassword(1, 2, feesPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for fees : " + feesPassword)
-		logger.Info("#############################################")
-		registrationPassword := generatePassword(16)
-		err = authService.ChangePassword(1, 3, registrationPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for registration : " + registrationPassword)
-		logger.Info("#############################################")
-		moneyPrinterPassword := generatePassword(16)
-		err = authService.ChangePassword(1, 4, moneyPrinterPassword)
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		logger.Info("#############################################")
-		logger.Info("password for money_printer : " + moneyPrinterPassword)
-		logger.Info("#############################################")
-		logger.Info("Default users initialized (adm, fees, registration, money_printer). Change those passwords ASAP")
-	}
+	rateLimiter := transport.NewRateLimiterImplementation(cfg.Security)
+	v1Handlers := transport.NewV1HandlersImplementation(useCases, rateLimiter)
 
 	transport.Run(v1Handlers, cfg.Server, cfg.Security)
 }
@@ -75,7 +90,7 @@ func generatePassword(length int) string {
 	for i := range b {
 		randByte, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("Failed to generate random byte for password: %v", err))
 		}
 		b[i] = charset[randByte.Int64()]
 	}
