@@ -47,6 +47,7 @@ type Repository interface {
 	CommitTransaction(q Querier) error
 	RollbackTransaction(q Querier) error
 	NewSingleQuery() Querier
+	Close() error
 }
 
 type Querier interface {
@@ -82,6 +83,11 @@ func NewRepositoryImplementation(databaseConfig config.DatabaseConfig) (Reposito
 	logger.Info("Successfully connected to the database")
 
 	return result, nil
+}
+
+func (r repositoryImplementation) Close() error {
+	logger.Info("Closing database connections")
+	return r.db.Close()
 }
 
 func (r repositoryImplementation) GetUserPermissions(q Querier, userID uuid.UUID) ([]models.Permission, error) {
