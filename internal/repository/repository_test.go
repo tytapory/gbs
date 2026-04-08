@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -18,6 +19,9 @@ import (
 
 var repositoryTemplateDatabaseConfig config.DatabaseConfig
 var mainConnection *sql.DB
+
+var commonPasswordHash = "12345678901234567890123456789012"
+var sendReceiveUsername = "sendReceiveUser"
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -79,6 +83,13 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	err = insertDefaultDataToTemplate()
+	if err != nil {
+		log.Printf("failed to insert default data to test db: %s", err.Error())
+
+		return
+	}
+
 	code := m.Run()
 
 	if err := testcontainers.TerminateContainer(pgContainer); err != nil {
@@ -86,6 +97,19 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+func insertDefaultDataToTemplate() error {
+	newUserID, err := uuid.NewV7()
+	if err != nil {
+		return err
+	}
+
+	_, err = mainConnection.Exec(`INSERT INTO users(id, username, password_hash) VALUES ($1, $2, $3)`, newUserID, sendReceiveUsername, commonPasswordHash)
+	if err != nil {
+		return err
+	}
+
 }
 
 func createEmptyTestRepository() (Repository, func() error, error) {
@@ -111,4 +135,7 @@ func createEmptyTestRepository() (Repository, func() error, error) {
 
 		return err
 	}, nil
+}
+
+func TestGetUserPermissions(t *testing.T) {
 }
