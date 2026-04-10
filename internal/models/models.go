@@ -9,6 +9,7 @@ import (
 type Permission int
 
 const (
+	// while it can be declared using itoa it is representing sql permissions so it is more accurate to just use ids from db
 	Administrator     Permission = 1
 	ManagePermissions Permission = 2
 	ManageFunds       Permission = 3

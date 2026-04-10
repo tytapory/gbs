@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"gbs/internal/config"
+	"gbs/internal/models"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -19,11 +22,22 @@ import (
 
 var repositoryTemplateDatabaseConfig config.DatabaseConfig
 var mainConnection *sql.DB
+var defaultPasswordHash = "123456789012345678901234567890123456789012345678901234567890"
 
-var commonPasswordHash = "12345678901234567890123456789012"
-var sendReceiveUsername = "sendReceiveUser"
+type user struct {
+	id           uuid.UUID
+	username     string
+	passwordHash string
+	balances     []models.Balance
+	permissions  []models.Permission
+}
 
 func TestMain(m *testing.M) {
+	code := 1
+	defer func() {
+		os.Exit(code)
+	}()
+
 	ctx := context.Background()
 
 	templateDBName := "gbs"
@@ -42,7 +56,7 @@ func TestMain(m *testing.M) {
 		postgres.WithPassword(password),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(5*time.Second)),
+				WithOccurrence(2).WithStartupTimeout(60*time.Second)),
 	)
 
 	defer func() {
@@ -73,7 +87,7 @@ func TestMain(m *testing.M) {
 
 	port := mappedPort.Port()
 
-	repositoryTemplateDatabaseConfig = config.DatabaseConfig{Host: host, Port: port, User: user, Password: password, DBName: templateDBName}
+	repositoryTemplateDatabaseConfig = config.DatabaseConfig{Host: host, Port: port, User: user, Password: password, DBName: templateDBName, SSLMode: "disable"}
 	mainConnectionDSN := fmt.Sprintf("postgres://%s:%s@%s:%s/postgres?sslmode=disable", user, password, host, port)
 
 	mainConnection, err = sql.Open("postgres", mainConnectionDSN)
@@ -83,59 +97,150 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	err = insertDefaultDataToTemplate()
-	if err != nil {
-		log.Printf("failed to insert default data to test db: %s", err.Error())
+	code = m.Run()
 
-		return
-	}
-
-	code := m.Run()
-
-	if err := testcontainers.TerminateContainer(pgContainer); err != nil {
-		log.Printf("failed to terminate container: %s", err)
-	}
-
-	os.Exit(code)
+	return
 }
 
-func insertDefaultDataToTemplate() error {
-	newUserID, err := uuid.NewV7()
-	if err != nil {
-		return err
+func TestGetUserPermissions(t *testing.T) {
+	r, dbName, err := createEmptyTestRepository()
+	require.NoError(t, err)
+	require.NotEmpty(t, dbName)
+	require.NotNil(t, r)
+
+	defer func() {
+		err := closeDBByName(dbName, r)
+		if err != nil {
+			t.Errorf("could not delete test database: %s", err.Error())
+		}
+	}()
+
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances:     []models.Balance{},
+			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
+		},
 	}
 
-	_, err = mainConnection.Exec(`INSERT INTO users(id, username, password_hash) VALUES ($1, $2, $3)`, newUserID, sendReceiveUsername, commonPasswordHash)
-	if err != nil {
-		return err
-	}
+	err = insertUsersInMockDB(users, dbName)
+	require.NoError(t, err)
 
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	perms, err := r.GetUserPermissions(q, users[0].id)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, users[0].permissions, perms)
+
+	perms, err = r.GetUserPermissions(q, uuid.Nil)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, perms, []models.Permission{})
 }
 
-func createEmptyTestRepository() (Repository, func() error, error) {
+func TestGetUserIDAndPasswordHash(t *testing.T) {
+	r, dbName, err := createEmptyTestRepository()
+	require.NoError(t, err)
+	require.NotEmpty(t, dbName)
+	require.NotNil(t, r)
+
+	defer func() {
+		err := closeDBByName(dbName, r)
+		if err != nil {
+			t.Errorf("could not delete test database: %s", err.Error())
+		}
+	}()
+
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances:     []models.Balance{},
+			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
+		},
+	}
+
+	err = insertUsersInMockDB(users, dbName)
+	require.NoError(t, err)
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	id, hash, err := r.GetUserIDAndPasswordHash(q, users[0].username)
+	assert.NoError(t, err)
+	assert.Equal(t, users[0].id, id)
+	assert.Equal(t, users[0].passwordHash, hash)
+
+	id, hash, err = r.GetUserIDAndPasswordHash(q, "")
+	var targetErr *models.NotFoundError
+	assert.ErrorAs(t, err, &targetErr)
+	assert.Equal(t, uuid.Nil, id)
+	assert.Equal(t, "", hash)
+}
+
+func createEmptyTestRepository() (Repository, string, error) {
 	testDBName := fmt.Sprintf("test_%d", time.Now().UnixNano())
 	_, err := mainConnection.Exec(fmt.Sprintf("CREATE DATABASE %s TEMPLATE gbs", testDBName))
 
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 
 	testRepository, err := NewRepositoryImplementation(config.DatabaseConfig{Host: repositoryTemplateDatabaseConfig.Host, Port: repositoryTemplateDatabaseConfig.Port, User: repositoryTemplateDatabaseConfig.User, Password: repositoryTemplateDatabaseConfig.Password, DBName: testDBName, SSLMode: repositoryTemplateDatabaseConfig.SSLMode})
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 
-	return testRepository, func() error {
-		err := testRepository.Close()
+	return testRepository, testDBName, nil
+}
+
+func closeDBByName(testDBName string, testRepository Repository) error {
+	err := testRepository.Close()
+	if err != nil {
+		return err
+	}
+
+	_, err = mainConnection.Exec(fmt.Sprintf("DROP DATABASE %s", testDBName))
+
+	return err
+}
+
+func insertUsersInMockDB(users []user, testDBName string) error {
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, testDBName)
+
+	testDBConnection, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return err
+	}
+
+	defer testDBConnection.Close()
+
+	for _, u := range users {
+		_, err = testDBConnection.Exec(
+			`INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)`,
+			u.id, u.username, u.passwordHash,
+		)
 		if err != nil {
 			return err
 		}
 
-		_, err = mainConnection.Exec(fmt.Sprintf("DROP DATABASE %s", testDBName))
+		for _, b := range u.balances {
+			_, err = testDBConnection.Exec(`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)`, u.id, b.Currency, b.Amount)
+			if err != nil {
+				return err
+			}
+		}
 
-		return err
-	}, nil
-}
+		for _, p := range u.permissions {
+			_, err = testDBConnection.Exec(`INSERT INTO user_permission (user_id, permission_id) VALUES ($1, $2)`, u.id, p)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
-func TestGetUserPermissions(t *testing.T) {
+	return nil
 }
