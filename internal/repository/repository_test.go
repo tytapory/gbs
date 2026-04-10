@@ -120,7 +120,6 @@ func TestGetUserPermissions(t *testing.T) {
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
-			balances:     []models.Balance{},
 			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
 		},
 	}
@@ -158,8 +157,6 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
-			balances:     []models.Balance{},
-			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
 		},
 	}
 
@@ -175,10 +172,85 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 	assert.Equal(t, users[0].passwordHash, hash)
 
 	id, hash, err = r.GetUserIDAndPasswordHash(q, "")
-	var targetErr *models.NotFoundError
-	assert.ErrorAs(t, err, &targetErr)
+	assert.IsType(t, &models.NotFoundError{}, err)
 	assert.Equal(t, uuid.Nil, id)
 	assert.Equal(t, "", hash)
+}
+
+func TestRegisterUser(t *testing.T) {
+	r, dbName, err := createEmptyTestRepository()
+	require.NoError(t, err)
+	require.NotEmpty(t, dbName)
+	require.NotNil(t, r)
+
+	defer func() {
+		err := closeDBByName(dbName, r)
+		if err != nil {
+			t.Errorf("could not delete test database: %s", err.Error())
+		}
+	}()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	users := []user{
+		user{
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+		},
+	}
+
+	id, err := r.RegisterUser(q, users[0].username, users[0].passwordHash)
+	assert.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, id)
+
+	users[0].id = id
+	err = insertUsersInMockDB(users, dbName)
+	assert.Error(t, err)
+
+	id, err = r.RegisterUser(q, users[0].username, users[0].passwordHash)
+	assert.IsType(t, &models.ConflictError{}, err)
+	assert.Equal(t, uuid.Nil, id)
+}
+
+func TestGetBalances(t *testing.T) {
+	r, dbName, err := createEmptyTestRepository()
+	require.NoError(t, err)
+	require.NotEmpty(t, dbName)
+	require.NotNil(t, r)
+
+	defer func() {
+		err := closeDBByName(dbName, r)
+		if err != nil {
+			t.Errorf("could not delete test database: %s", err.Error())
+		}
+	}()
+
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances: []models.Balance{
+				models.Balance{Currency: "gcoin", Amount: 1000},
+				models.Balance{Currency: "stascoin", Amount: 2000},
+			},
+		},
+	}
+
+	err = insertUsersInMockDB(users, dbName)
+	require.NoError(t, err)
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	balances, err := r.GetBalances(q, users[0].id)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, users[0].balances, balances)
+
+	balances, err = r.GetBalances(q, uuid.Nil)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, balances, []models.Balance{})
 }
 
 func createEmptyTestRepository() (Repository, string, error) {
