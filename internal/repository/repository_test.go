@@ -103,18 +103,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetUserPermissions(t *testing.T) {
-	r, dbName, err := createEmptyTestRepository()
-	require.NoError(t, err)
-	require.NotEmpty(t, dbName)
-	require.NotNil(t, r)
-
-	defer func() {
-		err := closeDBByName(dbName, r)
-		if err != nil {
-			t.Errorf("could not delete test database: %s", err.Error())
-		}
-	}()
-
 	users := []user{
 		user{
 			id:           uuid.New(),
@@ -124,8 +112,8 @@ func TestGetUserPermissions(t *testing.T) {
 		},
 	}
 
-	err = insertUsersInMockDB(users, dbName)
-	require.NoError(t, err)
+	r, _, teardown := setupTestDB(t, users)
+	defer teardown()
 
 	q := r.NewSingleQuery()
 	require.NotNil(t, q)
@@ -140,18 +128,6 @@ func TestGetUserPermissions(t *testing.T) {
 }
 
 func TestGetUserIDAndPasswordHash(t *testing.T) {
-	r, dbName, err := createEmptyTestRepository()
-	require.NoError(t, err)
-	require.NotEmpty(t, dbName)
-	require.NotNil(t, r)
-
-	defer func() {
-		err := closeDBByName(dbName, r)
-		if err != nil {
-			t.Errorf("could not delete test database: %s", err.Error())
-		}
-	}()
-
 	users := []user{
 		user{
 			id:           uuid.New(),
@@ -160,8 +136,8 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 		},
 	}
 
-	err = insertUsersInMockDB(users, dbName)
-	require.NoError(t, err)
+	r, _, teardown := setupTestDB(t, users)
+	defer teardown()
 
 	q := r.NewSingleQuery()
 	require.NotNil(t, q)
@@ -178,20 +154,8 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 }
 
 func TestRegisterUser(t *testing.T) {
-	r, dbName, err := createEmptyTestRepository()
-	require.NoError(t, err)
-	require.NotEmpty(t, dbName)
-	require.NotNil(t, r)
-
-	defer func() {
-		err := closeDBByName(dbName, r)
-		if err != nil {
-			t.Errorf("could not delete test database: %s", err.Error())
-		}
-	}()
-
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	r, dbName, teardown := setupTestDB(t, []user{})
+	defer teardown()
 
 	users := []user{
 		user{
@@ -199,6 +163,9 @@ func TestRegisterUser(t *testing.T) {
 			passwordHash: defaultPasswordHash,
 		},
 	}
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
 
 	id, err := r.RegisterUser(q, users[0].username, users[0].passwordHash)
 	assert.NoError(t, err)
@@ -214,18 +181,6 @@ func TestRegisterUser(t *testing.T) {
 }
 
 func TestGetBalances(t *testing.T) {
-	r, dbName, err := createEmptyTestRepository()
-	require.NoError(t, err)
-	require.NotEmpty(t, dbName)
-	require.NotNil(t, r)
-
-	defer func() {
-		err := closeDBByName(dbName, r)
-		if err != nil {
-			t.Errorf("could not delete test database: %s", err.Error())
-		}
-	}()
-
 	users := []user{
 		user{
 			id:           uuid.New(),
@@ -238,8 +193,8 @@ func TestGetBalances(t *testing.T) {
 		},
 	}
 
-	err = insertUsersInMockDB(users, dbName)
-	require.NoError(t, err)
+	r, _, teardown := setupTestDB(t, users)
+	defer teardown()
 
 	q := r.NewSingleQuery()
 	require.NotNil(t, q)
@@ -251,6 +206,143 @@ func TestGetBalances(t *testing.T) {
 	balances, err = r.GetBalances(q, uuid.Nil)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, balances, []models.Balance{})
+}
+
+func TestGetBalanceByCurrencyAndLock(t *testing.T) {
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances: []models.Balance{
+				models.Balance{Currency: "gcoin", Amount: 1000},
+				models.Balance{Currency: "stascoin", Amount: 2000},
+			},
+		},
+	}
+
+	r, dbName, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewTransaction()
+	require.NotNil(t, q)
+
+	balances, err := r.GetBalanceByCurrencyAndLock(q, users[0].id, users[0].balances[0].Currency)
+	assert.NoError(t, err)
+	assert.Equal(t, users[0].balances[0], balances)
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
+
+	testDBConnection, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+
+	defer testDBConnection.Close()
+
+	_, err = testDBConnection.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[0].Currency)
+	assert.Error(t, err)
+
+	_, err = testDBConnection.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[1].Currency)
+	assert.NoError(t, err)
+
+	r.CommitTransaction(q)
+
+	_, err = testDBConnection.Exec("UPDATE balances SET amount = $1 WHERE user_id = $2 AND currency = $3", users[0].balances[0].Amount, users[0].id, users[0].balances[0].Currency)
+	assert.NoError(t, err)
+}
+
+func TestSetBalance(t *testing.T) {
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances: []models.Balance{
+				models.Balance{Currency: "gcoin", Amount: 1000},
+			},
+		},
+	}
+
+	r, dbName, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	newAmount := 67
+	err := r.SetBalance(q, users[0].id, users[0].balances[0].Currency, int64(newAmount))
+	assert.NoError(t, err)
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
+
+	testDBConnection, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+
+	defer testDBConnection.Close()
+
+	var newBalance int
+	err = testDBConnection.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&newBalance)
+	assert.NoError(t, err)
+	assert.Equal(t, newAmount, newBalance)
+}
+
+func TestAddBalanceAndReturnNew(t *testing.T) {
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances: []models.Balance{
+				models.Balance{Currency: "gcoin", Amount: 1000},
+			},
+		},
+	}
+
+	r, dbName, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	additionalBalance := 67
+	expectedNew := users[0].balances[0].Amount + int64(additionalBalance)
+	new, err := r.AddBalanceAndReturnNew(q, users[0].id, users[0].balances[0].Currency, int64(additionalBalance))
+	assert.NoError(t, err)
+	assert.Equal(t, expectedNew, new)
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
+
+	testDBConnection, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+
+	defer testDBConnection.Close()
+
+	var actualValueInDB int64
+	err = testDBConnection.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&actualValueInDB)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedNew, actualValueInDB)
+}
+
+func setupTestDB(t *testing.T, users []user) (Repository, string, func()) {
+	t.Helper()
+
+	r, dbName, err := createEmptyTestRepository()
+	require.NoError(t, err)
+	require.NotEmpty(t, dbName)
+	require.NotNil(t, r)
+
+	if len(users) > 0 {
+		err = insertUsersInMockDB(users, dbName)
+		require.NoError(t, err)
+	}
+
+	teardown := func() {
+		err := closeDBByName(dbName, r)
+		if err != nil {
+			t.Errorf("could not delete test database: %s", err.Error())
+		}
+	}
+
+	return r, dbName, teardown
 }
 
 func createEmptyTestRepository() (Repository, string, error) {
