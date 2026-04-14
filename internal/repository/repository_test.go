@@ -98,8 +98,6 @@ func TestMain(m *testing.M) {
 	}
 
 	code = m.Run()
-
-	return
 }
 
 func TestGetUserPermissions(t *testing.T) {
@@ -154,7 +152,7 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 }
 
 func TestRegisterUser(t *testing.T) {
-	r, dbName, teardown := setupTestDB(t, []user{})
+	r, db, teardown := setupTestDB(t, []user{})
 	defer teardown()
 
 	users := []user{
@@ -172,7 +170,7 @@ func TestRegisterUser(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, id)
 
 	users[0].id = id
-	err = insertUsersInMockDB(users, dbName)
+	err = insertUsersInMockDB(users, db)
 	assert.Error(t, err)
 
 	id, err = r.RegisterUser(q, users[0].username, users[0].passwordHash)
@@ -221,7 +219,7 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 		},
 	}
 
-	r, dbName, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
 	q := r.NewTransaction()
@@ -231,58 +229,16 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, users[0].balances[0], balances)
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
-
-	testDBConnection, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-
-	defer testDBConnection.Close()
-
-	_, err = testDBConnection.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[0].Currency)
+	_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[0].Currency)
 	assert.Error(t, err)
 
-	_, err = testDBConnection.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[1].Currency)
+	_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[1].Currency)
 	assert.NoError(t, err)
 
 	r.CommitTransaction(q)
 
-	_, err = testDBConnection.Exec("UPDATE balances SET amount = $1 WHERE user_id = $2 AND currency = $3", users[0].balances[0].Amount, users[0].id, users[0].balances[0].Currency)
+	_, err = db.Exec("UPDATE balances SET amount = $1 WHERE user_id = $2 AND currency = $3", users[0].balances[0].Amount, users[0].id, users[0].balances[0].Currency)
 	assert.NoError(t, err)
-}
-
-func TestSetBalance(t *testing.T) {
-	users := []user{
-		user{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			balances: []models.Balance{
-				models.Balance{Currency: "gcoin", Amount: 1000},
-			},
-		},
-	}
-
-	r, dbName, teardown := setupTestDB(t, users)
-	defer teardown()
-
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
-
-	newAmount := 67
-	err := r.SetBalance(q, users[0].id, users[0].balances[0].Currency, int64(newAmount))
-	assert.NoError(t, err)
-
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
-
-	testDBConnection, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-
-	defer testDBConnection.Close()
-
-	var newBalance int
-	err = testDBConnection.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&newBalance)
-	assert.NoError(t, err)
-	assert.Equal(t, newAmount, newBalance)
 }
 
 func TestAddBalanceAndReturnNew(t *testing.T) {
@@ -297,7 +253,7 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 		},
 	}
 
-	r, dbName, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
 	q := r.NewSingleQuery()
@@ -309,60 +265,128 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expectedNew, new)
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, dbName)
-
-	testDBConnection, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-
-	defer testDBConnection.Close()
-
 	var actualValueInDB int64
-	err = testDBConnection.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&actualValueInDB)
+	err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&actualValueInDB)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedNew, actualValueInDB)
 }
 
-func setupTestDB(t *testing.T, users []user) (Repository, string, func()) {
+func TestSetBalance(t *testing.T) {
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+			balances: []models.Balance{
+				models.Balance{Currency: "gcoin", Amount: 1000},
+			},
+		},
+	}
+
+	r, db, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	newAmount := 67
+	err := r.SetBalance(q, users[0].id, users[0].balances[0].Currency, int64(newAmount))
+	assert.NoError(t, err)
+	var newBalance int
+	err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&newBalance)
+	assert.NoError(t, err)
+	assert.Equal(t, newAmount, newBalance)
+}
+
+func TestLogTransaction(t *testing.T) {
+	users := []user{
+		user{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+		},
+	}
+
+	r, db, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	log := models.Transaction{
+		SenderID:             nil,
+		ReceiverID:           users[0].id,
+		InitiatorID:          users[0].id,
+		SenderBalanceAfter:   nil,
+		ReceiverBalanceAfter: 123,
+		Currency:             "stascoin",
+		Amount:               11,
+		Fee:                  nil,
+		CreatedAt:            time.Now(),
+	}
+
+	err := r.LogTransaction(q, log)
+	assert.NoError(t, err)
+
+	var actualLog models.Transaction
+	err = db.QueryRow("SELECT sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency, amount, fee FROM transaction_logs LIMIT 1").Scan(&actualLog.SenderID, &actualLog.ReceiverID, &actualLog.InitiatorID, &actualLog.SenderBalanceAfter, &actualLog.ReceiverBalanceAfter, &actualLog.Currency, &actualLog.Amount, &actualLog.Fee)
+	assert.NoError(t, err)
+	assert.Equal(t, log, actualLog)
+}
+
+func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
 	t.Helper()
 
-	r, dbName, err := createEmptyTestRepository()
+	r, db, dbName, err := createEmptyTestRepository()
 	require.NoError(t, err)
 	require.NotEmpty(t, dbName)
 	require.NotNil(t, r)
 
 	if len(users) > 0 {
-		err = insertUsersInMockDB(users, dbName)
+		err = insertUsersInMockDB(users, db)
 		require.NoError(t, err)
 	}
 
 	teardown := func() {
-		err := closeDBByName(dbName, r)
+		err := closeDBByName(db, dbName, r)
 		if err != nil {
 			t.Errorf("could not delete test database: %s", err.Error())
 		}
 	}
 
-	return r, dbName, teardown
+	return r, db, teardown
 }
 
-func createEmptyTestRepository() (Repository, string, error) {
+func createEmptyTestRepository() (Repository, *sql.DB, string, error) {
 	testDBName := fmt.Sprintf("test_%d", time.Now().UnixNano())
 	_, err := mainConnection.Exec(fmt.Sprintf("CREATE DATABASE %s TEMPLATE gbs", testDBName))
 
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
+	}
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, testDBName)
+
+	testDBConnection, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, nil, "", err
 	}
 
 	testRepository, err := NewRepositoryImplementation(config.DatabaseConfig{Host: repositoryTemplateDatabaseConfig.Host, Port: repositoryTemplateDatabaseConfig.Port, User: repositoryTemplateDatabaseConfig.User, Password: repositoryTemplateDatabaseConfig.Password, DBName: testDBName, SSLMode: repositoryTemplateDatabaseConfig.SSLMode})
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
-	return testRepository, testDBName, nil
+	return testRepository, testDBConnection, testDBName, nil
 }
 
-func closeDBByName(testDBName string, testRepository Repository) error {
-	err := testRepository.Close()
+func closeDBByName(testDB *sql.DB, testDBName string, testRepository Repository) error {
+	err := testDB.Close()
+	if err != nil {
+		return err
+	}
+
+	err = testRepository.Close()
 	if err != nil {
 		return err
 	}
@@ -372,18 +396,9 @@ func closeDBByName(testDBName string, testRepository Repository) error {
 	return err
 }
 
-func insertUsersInMockDB(users []user, testDBName string) error {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", repositoryTemplateDatabaseConfig.User, repositoryTemplateDatabaseConfig.Password, repositoryTemplateDatabaseConfig.Host, repositoryTemplateDatabaseConfig.Port, testDBName)
-
-	testDBConnection, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return err
-	}
-
-	defer testDBConnection.Close()
-
+func insertUsersInMockDB(users []user, testDB *sql.DB) error {
 	for _, u := range users {
-		_, err = testDBConnection.Exec(
+		_, err := testDB.Exec(
 			`INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)`,
 			u.id, u.username, u.passwordHash,
 		)
@@ -392,14 +407,14 @@ func insertUsersInMockDB(users []user, testDBName string) error {
 		}
 
 		for _, b := range u.balances {
-			_, err = testDBConnection.Exec(`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)`, u.id, b.Currency, b.Amount)
+			_, err = testDB.Exec(`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)`, u.id, b.Currency, b.Amount)
 			if err != nil {
 				return err
 			}
 		}
 
 		for _, p := range u.permissions {
-			_, err = testDBConnection.Exec(`INSERT INTO user_permission (user_id, permission_id) VALUES ($1, $2)`, u.id, p)
+			_, err = testDB.Exec(`INSERT INTO user_permission (user_id, permission_id) VALUES ($1, $2)`, u.id, p)
 			if err != nil {
 				return err
 			}
