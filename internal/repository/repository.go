@@ -97,7 +97,7 @@ func (r repositoryImplementation) GetUserPermissions(q Querier, userID uuid.UUID
 	}
 	defer rows.Close()
 
-	var permissions []models.Permission
+	permissions := make([]models.Permission, 0)
 	for rows.Next() {
 		var permission models.Permission
 

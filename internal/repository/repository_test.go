@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,33 +102,70 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetUserPermissions(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
+		}, {
+			id:           uuid.New(),
+			username:     "user_with_no_rights",
+			passwordHash: defaultPasswordHash,
+			permissions:  []models.Permission{},
 		},
 	}
 
 	r, _, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		userID    uuid.UUID
+		want      []models.Permission
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			userID:    users[0].id,
+			want:      users[0].permissions,
+			wantError: nil,
+		}, {
+			name:      "user does not exists",
+			userID:    uuid.Nil,
+			want:      []models.Permission{},
+			wantError: nil,
+		}, {
+			name:      "user with no permissions",
+			userID:    users[1].id,
+			want:      users[1].permissions,
+			wantError: nil,
+		},
+	}
 
-	perms, err := r.GetUserPermissions(q, users[0].id)
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, users[0].permissions, perms)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	perms, err = r.GetUserPermissions(q, uuid.Nil)
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, perms, []models.Permission{})
+			perms, err := r.GetUserPermissions(q, test.userID)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, perms)
+		})
+	}
 }
 
 func TestGetUserIDAndPasswordHash(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
@@ -137,56 +175,110 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 	r, _, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		username  string
+		wantID    uuid.UUID
+		wantHash  string
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			username:  users[0].username,
+			wantID:    users[0].id,
+			wantHash:  users[0].passwordHash,
+			wantError: nil,
+		},
+		{
+			name:      "user does not exist",
+			username:  "not_exist",
+			wantID:    uuid.Nil,
+			wantHash:  "",
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	id, hash, err := r.GetUserIDAndPasswordHash(q, users[0].username)
-	assert.NoError(t, err)
-	assert.Equal(t, users[0].id, id)
-	assert.Equal(t, users[0].passwordHash, hash)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	id, hash, err = r.GetUserIDAndPasswordHash(q, "")
-	assert.IsType(t, &models.NotFoundError{}, err)
-	assert.Equal(t, uuid.Nil, id)
-	assert.Equal(t, "", hash)
+			id, hash, err := r.GetUserIDAndPasswordHash(q, test.username)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.wantID, id)
+			assert.Equal(t, test.wantHash, hash)
+		})
+	}
 }
 
 func TestRegisterUser(t *testing.T) {
-	r, db, teardown := setupTestDB(t, []user{})
-	defer teardown()
+	t.Parallel()
 
 	users := []user{
-		user{
+		{
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 		},
 	}
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	r, db, teardown := setupTestDB(t, users)
+	defer teardown()
 
-	id, err := r.RegisterUser(q, users[0].username, users[0].passwordHash)
-	assert.NoError(t, err)
-	assert.NotEqual(t, uuid.Nil, id)
+	tests := []struct {
+		name         string
+		username     string
+		passwordHash string
+		wantError    error
+	}{
+		{
+			name:         "happy path",
+			username:     "new_user",
+			passwordHash: defaultPasswordHash,
+			wantError:    nil,
+		},
+		{
+			name:         "user already exist",
+			username:     users[0].username,
+			passwordHash: users[0].passwordHash,
+			wantError:    &models.ConflictError{},
+		},
+	}
 
-	users[0].id = id
-	err = insertUsersInMockDB(users, db)
-	assert.Error(t, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	id, err = r.RegisterUser(q, users[0].username, users[0].passwordHash)
-	assert.IsType(t, &models.ConflictError{}, err)
-	assert.Equal(t, uuid.Nil, id)
+			id, err := r.RegisterUser(q, test.username, test.passwordHash)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+
+				var actualID uuid.UUID
+				err = db.QueryRow("SELECT id FROM users WHERE username = $1", test.username).Scan(&actualID)
+				assert.NoError(t, err)
+				assert.Equal(t, id, actualID)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+		})
+	}
 }
 
 func TestGetBalances(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
-				models.Balance{Currency: "gcoin", Amount: 1000},
-				models.Balance{Currency: "stascoin", Amount: 2000},
+				{Currency: "gcoin", Amount: 1000},
+				{Currency: "stascoin", Amount: 2000},
 			},
 		},
 	}
@@ -207,14 +299,16 @@ func TestGetBalances(t *testing.T) {
 }
 
 func TestGetBalanceByCurrencyAndLock(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
-				models.Balance{Currency: "gcoin", Amount: 1000},
-				models.Balance{Currency: "stascoin", Amount: 2000},
+				{Currency: "gcoin", Amount: 1000},
+				{Currency: "stascoin", Amount: 2000},
 			},
 		},
 	}
@@ -242,13 +336,15 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 }
 
 func TestAddBalanceAndReturnNew(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
-				models.Balance{Currency: "gcoin", Amount: 1000},
+				{Currency: "gcoin", Amount: 1000},
 			},
 		},
 	}
@@ -272,13 +368,15 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 }
 
 func TestSetBalance(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
-				models.Balance{Currency: "gcoin", Amount: 1000},
+				{Currency: "gcoin", Amount: 1000},
 			},
 		},
 	}
@@ -299,8 +397,10 @@ func TestSetBalance(t *testing.T) {
 }
 
 func TestLogTransaction(t *testing.T) {
+	t.Parallel()
+
 	users := []user{
-		user{
+		{
 			id:           uuid.New(),
 			username:     "test_user",
 			passwordHash: defaultPasswordHash,
@@ -331,13 +431,62 @@ func TestLogTransaction(t *testing.T) {
 	var actualLog models.Transaction
 	err = db.QueryRow("SELECT sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency, amount, fee FROM transaction_logs LIMIT 1").Scan(&actualLog.SenderID, &actualLog.ReceiverID, &actualLog.InitiatorID, &actualLog.SenderBalanceAfter, &actualLog.ReceiverBalanceAfter, &actualLog.Currency, &actualLog.Amount, &actualLog.Fee)
 	assert.NoError(t, err)
+	actualLog.CreatedAt = log.CreatedAt // repository controls this there is no way to affect this
 	assert.Equal(t, log, actualLog)
+}
+
+func TestGetUserID(t *testing.T) {
+	t.Parallel()
+
+	users := []user{
+		{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+		},
+	}
+
+	r, _, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	user := users[0]
+
+	id, err := r.GetUserID(q, user.username)
+	assert.NoError(t, err)
+	assert.Equal(t, id, user.id)
+}
+
+func TestGetUsername(t *testing.T) {
+	t.Parallel()
+
+	users := []user{
+		{
+			id:           uuid.New(),
+			username:     "test_user",
+			passwordHash: defaultPasswordHash,
+		},
+	}
+
+	r, _, teardown := setupTestDB(t, users)
+	defer teardown()
+
+	q := r.NewSingleQuery()
+	require.NotNil(t, q)
+
+	user := users[0]
+
+	id, err := r.GetUsername(q, user.id)
+	assert.NoError(t, err)
+	assert.Equal(t, user.username, id)
 }
 
 func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
 	t.Helper()
 
-	r, db, dbName, err := createEmptyTestRepository()
+	r, db, dbName, err := createEmptyTestRepository(t)
 	require.NoError(t, err)
 	require.NotEmpty(t, dbName)
 	require.NotNil(t, r)
@@ -357,8 +506,9 @@ func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
 	return r, db, teardown
 }
 
-func createEmptyTestRepository() (Repository, *sql.DB, string, error) {
-	testDBName := fmt.Sprintf("test_%d", time.Now().UnixNano())
+func createEmptyTestRepository(t *testing.T) (Repository, *sql.DB, string, error) {
+	cleanName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	testDBName := fmt.Sprintf("test_%s", cleanName)
 	_, err := mainConnection.Exec(fmt.Sprintf("CREATE DATABASE %s TEMPLATE gbs", testDBName))
 
 	if err != nil {
