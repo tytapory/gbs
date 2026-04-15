@@ -151,7 +151,7 @@ func (r repositoryImplementation) GetBalances(q Querier, userID uuid.UUID) ([]mo
 	}
 	defer rows.Close()
 
-	var balances []models.Balance
+	balances := make([]models.Balance, 0)
 	for rows.Next() {
 		var balance models.Balance
 
@@ -184,12 +184,22 @@ func (r repositoryImplementation) GetBalanceByCurrencyAndLock(q Querier, userID 
 }
 
 func (r repositoryImplementation) SetBalance(q Querier, userID uuid.UUID, currency string, newAmount int64) error {
-	_, err := q.Exec(
+	res, err := q.Exec(
 		`UPDATE balances 
         SET amount = $1 
         WHERE user_id = $2 AND currency = $3`,
 		newAmount, userID, currency,
 	)
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return &models.ServerFaultError{Message: "failed to check rows affected: " + err.Error()}
+	}
+
+	if rowsAffected == 0 {
+		return &models.NotFoundError{Message: "balance not found for update"}
+	}
+
 	return r.mapSQLErrorToGolangError(err)
 }
 
@@ -198,10 +208,21 @@ func (r repositoryImplementation) AddBalanceAndReturnNew(q Querier, userID uuid.
 ) {
 	var newBalance int64
 	err := q.QueryRow(
-		`INSERT INTO balances(user_id, currency, amount) VALUES ($1, $2, $3)
-             ON CONFLICT (user_id, currency) 
-             DO UPDATE SET amount = balances.amount + EXCLUDED.amount 
-             RETURNING amount`,
+		`WITH updated AS (
+			UPDATE balances
+			SET amount = amount + $3
+			WHERE user_id = $1 AND currency = $2
+			RETURNING amount
+		),
+		inserted AS (
+			INSERT INTO balances(user_id, currency, amount)
+			SELECT $1, $2, $3
+			WHERE NOT EXISTS (SELECT 1 FROM updated)
+			RETURNING amount
+		)
+		SELECT amount FROM updated
+		UNION ALL
+		SELECT amount FROM inserted;`,
 		userID, currency, amount,
 	).Scan(&newBalance)
 

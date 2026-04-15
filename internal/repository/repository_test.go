@@ -281,21 +281,53 @@ func TestGetBalances(t *testing.T) {
 				{Currency: "stascoin", Amount: 2000},
 			},
 		},
+		{
+			id:           uuid.New(),
+			username:     "poor_user",
+			passwordHash: defaultPasswordHash,
+		},
 	}
 
 	r, _, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		want      []models.Balance
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			id:        users[0].id,
+			want:      users[0].balances,
+			wantError: nil,
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			want:      []models.Balance{},
+			wantError: nil,
+		}, {
+			name:      "user with no balances",
+			id:        users[1].id,
+			want:      []models.Balance{},
+			wantError: nil,
+		},
+	}
 
-	balances, err := r.GetBalances(q, users[0].id)
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, users[0].balances, balances)
-
-	balances, err = r.GetBalances(q, uuid.Nil)
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, balances, []models.Balance{})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
+			balances, err := r.GetBalances(q, test.id)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, balances)
+		})
+	}
 }
 
 func TestGetBalanceByCurrencyAndLock(t *testing.T) {
@@ -308,7 +340,6 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
 				{Currency: "gcoin", Amount: 1000},
-				{Currency: "stascoin", Amount: 2000},
 			},
 		},
 	}
@@ -316,23 +347,61 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewTransaction()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		currency  string
+		want      models.Balance
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			id:        users[0].id,
+			currency:  users[0].balances[0].Currency,
+			want:      users[0].balances[0],
+			wantError: nil,
+		}, {
+			name:      "balance does not exist",
+			id:        users[0].id,
+			currency:  "not_exist",
+			want:      models.Balance{},
+			wantError: &models.NotFoundError{},
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			currency:  "not_exist",
+			want:      models.Balance{},
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	balances, err := r.GetBalanceByCurrencyAndLock(q, users[0].id, users[0].balances[0].Currency)
-	assert.NoError(t, err)
-	assert.Equal(t, users[0].balances[0], balances)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewTransaction()
+			require.NotNil(t, q)
 
-	_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[0].Currency)
-	assert.Error(t, err)
+			balance, err := r.GetBalanceByCurrencyAndLock(q, test.id, test.currency)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, balance)
 
-	_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", users[0].id, users[0].balances[1].Currency)
-	assert.NoError(t, err)
+			_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", test.id, test.currency)
+			if test.wantError == nil {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 
-	r.CommitTransaction(q)
+			err = r.CommitTransaction((q))
+			require.NoError(t, err)
 
-	_, err = db.Exec("UPDATE balances SET amount = $1 WHERE user_id = $2 AND currency = $3", users[0].balances[0].Amount, users[0].id, users[0].balances[0].Currency)
-	assert.NoError(t, err)
+			_, err = db.Exec("SELECT 1 FROM balances WHERE user_id = $1 AND currency = $2 FOR UPDATE NOWAIT", test.id, test.currency)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestAddBalanceAndReturnNew(t *testing.T) {
@@ -345,6 +414,8 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 			passwordHash: defaultPasswordHash,
 			balances: []models.Balance{
 				{Currency: "gcoin", Amount: 1000},
+				{Currency: "stascoin", Amount: 67},
+				{Currency: "megacoin", Amount: 10},
 			},
 		},
 	}
@@ -352,19 +423,76 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		balance   models.Balance
+		amount    int64
+		want      int64
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			id:        users[0].id,
+			balance:   users[0].balances[0],
+			amount:    67,
+			want:      users[0].balances[0].Amount + 67,
+			wantError: nil,
+		},
+		{
+			name:      "substract",
+			id:        users[0].id,
+			balance:   users[0].balances[1],
+			amount:    -67,
+			want:      users[0].balances[1].Amount - 67,
+			wantError: nil,
+		},
+		{
+			name:      "balance does not exist",
+			id:        users[0].id,
+			balance:   models.Balance{Currency: "not exist", Amount: 0},
+			amount:    67,
+			want:      67,
+			wantError: nil,
+		}, {
+			name:      "balance go negative",
+			id:        users[0].id,
+			balance:   users[0].balances[2],
+			amount:    -67,
+			want:      0,
+			wantError: &models.BadRequestError{},
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			balance:   models.Balance{Currency: "megacoin", Amount: 0},
+			amount:    67,
+			want:      0,
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	additionalBalance := 67
-	expectedNew := users[0].balances[0].Amount + int64(additionalBalance)
-	new, err := r.AddBalanceAndReturnNew(q, users[0].id, users[0].balances[0].Currency, int64(additionalBalance))
-	assert.NoError(t, err)
-	assert.Equal(t, expectedNew, new)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	var actualValueInDB int64
-	err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&actualValueInDB)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedNew, actualValueInDB)
+			new, err := r.AddBalanceAndReturnNew(q, test.id, test.balance.Currency, test.amount)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, new)
+
+			if test.wantError == nil {
+				var actualValueInDB int64
+
+				err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", test.id, test.balance.Currency).Scan(&actualValueInDB)
+				assert.NoError(t, err)
+				assert.Equal(t, test.want, actualValueInDB)
+			}
+		})
+	}
 }
 
 func TestSetBalance(t *testing.T) {
@@ -384,16 +512,56 @@ func TestSetBalance(t *testing.T) {
 	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		currency  string
+		amount    int64
+		want      int64
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			id:        users[0].id,
+			currency:  users[0].balances[0].Currency,
+			amount:    67,
+			want:      67,
+			wantError: nil,
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			currency:  "not_exist",
+			amount:    67,
+			want:      0,
+			wantError: &models.NotFoundError{},
+		}, {
+			name:      "currency does not exist",
+			id:        users[0].id,
+			currency:  "not_exist",
+			amount:    67,
+			want:      0,
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	newAmount := 67
-	err := r.SetBalance(q, users[0].id, users[0].balances[0].Currency, int64(newAmount))
-	assert.NoError(t, err)
-	var newBalance int
-	err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", users[0].id, users[0].balances[0].Currency).Scan(&newBalance)
-	assert.NoError(t, err)
-	assert.Equal(t, newAmount, newBalance)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
+
+			err := r.SetBalance(q, test.id, test.currency, test.amount)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+
+				var newBalance int64
+				err = db.QueryRow("SELECT amount FROM balances WHERE user_id = $1 AND currency = $2", test.id, test.currency).Scan(&newBalance)
+				assert.NoError(t, err)
+				assert.Equal(t, test.amount, newBalance)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+		})
+	}
 }
 
 func TestLogTransaction(t *testing.T) {
@@ -410,29 +578,76 @@ func TestLogTransaction(t *testing.T) {
 	r, db, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		log       models.Transaction
+		wantError error
+	}{
+		{
+			name: "happy path",
+			log: models.Transaction{
+				SenderID:             nil,
+				ReceiverID:           users[0].id,
+				InitiatorID:          users[0].id,
+				SenderBalanceAfter:   nil,
+				ReceiverBalanceAfter: 123,
+				Currency:             "stascoin",
+				Amount:               11,
+				Fee:                  nil,
+			},
+			wantError: nil,
+		}, {
+			name: "receiver does not exist",
 
-	log := models.Transaction{
-		SenderID:             nil,
-		ReceiverID:           users[0].id,
-		InitiatorID:          users[0].id,
-		SenderBalanceAfter:   nil,
-		ReceiverBalanceAfter: 123,
-		Currency:             "stascoin",
-		Amount:               11,
-		Fee:                  nil,
-		CreatedAt:            time.Now(),
+			log: models.Transaction{
+				SenderID:             nil,
+				ReceiverID:           uuid.Nil,
+				InitiatorID:          users[0].id,
+				SenderBalanceAfter:   nil,
+				ReceiverBalanceAfter: 123,
+				Currency:             "stascoin",
+				Amount:               11,
+				Fee:                  nil,
+			},
+			wantError: &models.NotFoundError{},
+		},
+		{
+			name: "initiator does not exist",
+			log: models.Transaction{
+				SenderID:             nil,
+				ReceiverID:           users[0].id,
+				InitiatorID:          uuid.Nil,
+				SenderBalanceAfter:   nil,
+				ReceiverBalanceAfter: 123,
+				Currency:             "stascoin",
+				Amount:               11,
+				Fee:                  nil,
+			},
+			wantError: &models.NotFoundError{},
+		},
 	}
 
-	err := r.LogTransaction(q, log)
-	assert.NoError(t, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	var actualLog models.Transaction
-	err = db.QueryRow("SELECT sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency, amount, fee FROM transaction_logs LIMIT 1").Scan(&actualLog.SenderID, &actualLog.ReceiverID, &actualLog.InitiatorID, &actualLog.SenderBalanceAfter, &actualLog.ReceiverBalanceAfter, &actualLog.Currency, &actualLog.Amount, &actualLog.Fee)
-	assert.NoError(t, err)
-	actualLog.CreatedAt = log.CreatedAt // repository controls this there is no way to affect this
-	assert.Equal(t, log, actualLog)
+			err := r.LogTransaction(q, test.log)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+
+				log := test.log
+
+				var actualLog models.Transaction
+				err = db.QueryRow("SELECT sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency, amount, fee FROM transaction_logs LIMIT 1").Scan(&actualLog.SenderID, &actualLog.ReceiverID, &actualLog.InitiatorID, &actualLog.SenderBalanceAfter, &actualLog.ReceiverBalanceAfter, &actualLog.Currency, &actualLog.Amount, &actualLog.Fee)
+				assert.NoError(t, err)
+				actualLog.CreatedAt = log.CreatedAt // repository controls this there is no way to affect this
+				assert.Equal(t, log, actualLog)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+		})
+	}
 }
 
 func TestGetUserID(t *testing.T) {

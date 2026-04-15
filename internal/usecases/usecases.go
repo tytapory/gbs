@@ -367,15 +367,7 @@ func (u useCasesImplementation) TransferMoney(
 
 	err = u.repo.LogTransaction(q, transaction)
 	if err != nil {
-		transactionJSON, marshalErr := json.Marshal(transaction)
-		if marshalErr != nil {
-			transactionJSON = []byte(fmt.Sprintf("failed to marshal transaction: %v", marshalErr))
-		}
-
-		err = fmt.Errorf(
-			"failed to log transaction %s: %w",
-			string(transactionJSON), err,
-		)
+		err = fmt.Errorf("failed to log transaction %+v: %w", transaction, err)
 	}
 
 	return
