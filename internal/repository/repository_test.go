@@ -664,14 +664,39 @@ func TestGetUserID(t *testing.T) {
 	r, _, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		username  string
+		want      uuid.UUID
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			username:  users[0].username,
+			want:      users[0].id,
+			wantError: nil,
+		}, {
+			name:      "user does not exist",
+			username:  "not exist",
+			want:      uuid.Nil,
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	user := users[0]
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	id, err := r.GetUserID(q, user.username)
-	assert.NoError(t, err)
-	assert.Equal(t, id, user.id)
+			id, err := r.GetUserID(q, test.username)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, id)
+		})
+	}
 }
 
 func TestGetUsername(t *testing.T) {
@@ -688,14 +713,40 @@ func TestGetUsername(t *testing.T) {
 	r, _, teardown := setupTestDB(t, users)
 	defer teardown()
 
-	q := r.NewSingleQuery()
-	require.NotNil(t, q)
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		want      string
+		wantError error
+	}{
+		{
+			name:      "happy path",
+			id:        users[0].id,
+			want:      users[0].username,
+			wantError: nil,
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			want:      "",
+			wantError: &models.NotFoundError{},
+		},
+	}
 
-	user := users[0]
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
 
-	id, err := r.GetUsername(q, user.id)
-	assert.NoError(t, err)
-	assert.Equal(t, user.username, id)
+			username, err := r.GetUsername(q, test.id)
+			if test.wantError == nil {
+
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, username)
+		})
+	}
 }
 
 func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
