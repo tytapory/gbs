@@ -25,6 +25,11 @@ var repositoryTemplateDatabaseConfig config.DatabaseConfig
 var mainConnection *sql.DB
 var defaultPasswordHash = "123456789012345678901234567890123456789012345678901234567890"
 
+type dbData struct {
+	users []user
+	logs  []models.Transaction
+}
+
 type user struct {
 	id           uuid.UUID
 	username     string
@@ -104,21 +109,23 @@ func TestMain(m *testing.M) {
 func TestGetUserPermissions(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
-		}, {
-			id:           uuid.New(),
-			username:     "user_with_no_rights",
-			passwordHash: defaultPasswordHash,
-			permissions:  []models.Permission{},
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+				permissions:  []models.Permission{models.SendFunds, models.ReceiveFunds},
+			}, {
+				id:           uuid.New(),
+				username:     "user_with_no_rights",
+				passwordHash: defaultPasswordHash,
+				permissions:  []models.Permission{},
+			},
 		},
 	}
 
-	r, _, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -129,8 +136,8 @@ func TestGetUserPermissions(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			userID:    users[0].id,
-			want:      users[0].permissions,
+			userID:    data.users[0].id,
+			want:      data.users[0].permissions,
 			wantError: nil,
 		}, {
 			name:      "user does not exists",
@@ -139,14 +146,16 @@ func TestGetUserPermissions(t *testing.T) {
 			wantError: nil,
 		}, {
 			name:      "user with no permissions",
-			userID:    users[1].id,
-			want:      users[1].permissions,
+			userID:    data.users[1].id,
+			want:      data.users[1].permissions,
 			wantError: nil,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -164,15 +173,17 @@ func TestGetUserPermissions(t *testing.T) {
 func TestGetUserIDAndPasswordHash(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
 
-	r, _, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -184,9 +195,9 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			username:  users[0].username,
-			wantID:    users[0].id,
-			wantHash:  users[0].passwordHash,
+			username:  data.users[0].username,
+			wantID:    data.users[0].id,
+			wantHash:  data.users[0].passwordHash,
 			wantError: nil,
 		},
 		{
@@ -200,6 +211,8 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -218,14 +231,16 @@ func TestGetUserIDAndPasswordHash(t *testing.T) {
 func TestRegisterUser(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
+	data := dbData{
+		users: []user{
+			{
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
 
-	r, db, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -242,14 +257,16 @@ func TestRegisterUser(t *testing.T) {
 		},
 		{
 			name:         "user already exist",
-			username:     users[0].username,
-			passwordHash: users[0].passwordHash,
+			username:     data.users[0].username,
+			passwordHash: data.users[0].passwordHash,
 			wantError:    &models.ConflictError{},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -271,24 +288,26 @@ func TestRegisterUser(t *testing.T) {
 func TestGetBalances(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			balances: []models.Balance{
-				{Currency: "gcoin", Amount: 1000},
-				{Currency: "stascoin", Amount: 2000},
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+				balances: []models.Balance{
+					{Currency: "gcoin", Amount: 1000},
+					{Currency: "stascoin", Amount: 2000},
+				},
 			},
-		},
-		{
-			id:           uuid.New(),
-			username:     "poor_user",
-			passwordHash: defaultPasswordHash,
+			{
+				id:           uuid.New(),
+				username:     "poor_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
 
-	r, _, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -299,8 +318,8 @@ func TestGetBalances(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			id:        users[0].id,
-			want:      users[0].balances,
+			id:        data.users[0].id,
+			want:      data.users[0].balances,
 			wantError: nil,
 		}, {
 			name:      "user does not exist",
@@ -309,7 +328,7 @@ func TestGetBalances(t *testing.T) {
 			wantError: nil,
 		}, {
 			name:      "user with no balances",
-			id:        users[1].id,
+			id:        data.users[1].id,
 			want:      []models.Balance{},
 			wantError: nil,
 		},
@@ -317,6 +336,8 @@ func TestGetBalances(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 			balances, err := r.GetBalances(q, test.id)
@@ -333,18 +354,20 @@ func TestGetBalances(t *testing.T) {
 func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			balances: []models.Balance{
-				{Currency: "gcoin", Amount: 1000},
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+				balances: []models.Balance{
+					{Currency: "gcoin", Amount: 1000},
+				},
 			},
 		},
 	}
 
-	r, db, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -356,13 +379,13 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			id:        users[0].id,
-			currency:  users[0].balances[0].Currency,
-			want:      users[0].balances[0],
+			id:        data.users[0].id,
+			currency:  data.users[0].balances[0].Currency,
+			want:      data.users[0].balances[0],
 			wantError: nil,
 		}, {
 			name:      "balance does not exist",
-			id:        users[0].id,
+			id:        data.users[0].id,
 			currency:  "not_exist",
 			want:      models.Balance{},
 			wantError: &models.NotFoundError{},
@@ -377,6 +400,8 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewTransaction()
 			require.NotNil(t, q)
 
@@ -407,20 +432,22 @@ func TestGetBalanceByCurrencyAndLock(t *testing.T) {
 func TestAddBalanceAndReturnNew(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			balances: []models.Balance{
-				{Currency: "gcoin", Amount: 1000},
-				{Currency: "stascoin", Amount: 67},
-				{Currency: "megacoin", Amount: 10},
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+				balances: []models.Balance{
+					{Currency: "gcoin", Amount: 1000},
+					{Currency: "stascoin", Amount: 67},
+					{Currency: "megacoin", Amount: 10},
+				},
 			},
 		},
 	}
 
-	r, db, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -433,31 +460,31 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			id:        users[0].id,
-			balance:   users[0].balances[0],
+			id:        data.users[0].id,
+			balance:   data.users[0].balances[0],
 			amount:    67,
-			want:      users[0].balances[0].Amount + 67,
+			want:      data.users[0].balances[0].Amount + 67,
 			wantError: nil,
 		},
 		{
 			name:      "substract",
-			id:        users[0].id,
-			balance:   users[0].balances[1],
+			id:        data.users[0].id,
+			balance:   data.users[0].balances[1],
 			amount:    -67,
-			want:      users[0].balances[1].Amount - 67,
+			want:      data.users[0].balances[1].Amount - 67,
 			wantError: nil,
 		},
 		{
 			name:      "balance does not exist",
-			id:        users[0].id,
+			id:        data.users[0].id,
 			balance:   models.Balance{Currency: "not exist", Amount: 0},
 			amount:    67,
 			want:      67,
 			wantError: nil,
 		}, {
 			name:      "balance go negative",
-			id:        users[0].id,
-			balance:   users[0].balances[2],
+			id:        data.users[0].id,
+			balance:   data.users[0].balances[2],
 			amount:    -67,
 			want:      0,
 			wantError: &models.BadRequestError{},
@@ -473,6 +500,8 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -497,19 +526,20 @@ func TestAddBalanceAndReturnNew(t *testing.T) {
 
 func TestSetBalance(t *testing.T) {
 	t.Parallel()
-
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
-			balances: []models.Balance{
-				{Currency: "gcoin", Amount: 1000},
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+				balances: []models.Balance{
+					{Currency: "gcoin", Amount: 1000},
+				},
 			},
 		},
 	}
 
-	r, db, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -522,8 +552,8 @@ func TestSetBalance(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			id:        users[0].id,
-			currency:  users[0].balances[0].Currency,
+			id:        data.users[0].id,
+			currency:  data.users[0].balances[0].Currency,
 			amount:    67,
 			want:      67,
 			wantError: nil,
@@ -536,7 +566,7 @@ func TestSetBalance(t *testing.T) {
 			wantError: &models.NotFoundError{},
 		}, {
 			name:      "currency does not exist",
-			id:        users[0].id,
+			id:        data.users[0].id,
 			currency:  "not_exist",
 			amount:    67,
 			want:      0,
@@ -546,6 +576,8 @@ func TestSetBalance(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -567,15 +599,17 @@ func TestSetBalance(t *testing.T) {
 func TestLogTransaction(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
 
-	r, db, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -587,8 +621,8 @@ func TestLogTransaction(t *testing.T) {
 			name: "happy path",
 			log: models.Transaction{
 				SenderID:             nil,
-				ReceiverID:           users[0].id,
-				InitiatorID:          users[0].id,
+				ReceiverID:           data.users[0].id,
+				InitiatorID:          data.users[0].id,
 				SenderBalanceAfter:   nil,
 				ReceiverBalanceAfter: 123,
 				Currency:             "stascoin",
@@ -602,7 +636,7 @@ func TestLogTransaction(t *testing.T) {
 			log: models.Transaction{
 				SenderID:             nil,
 				ReceiverID:           uuid.Nil,
-				InitiatorID:          users[0].id,
+				InitiatorID:          data.users[0].id,
 				SenderBalanceAfter:   nil,
 				ReceiverBalanceAfter: 123,
 				Currency:             "stascoin",
@@ -615,7 +649,7 @@ func TestLogTransaction(t *testing.T) {
 			name: "initiator does not exist",
 			log: models.Transaction{
 				SenderID:             nil,
-				ReceiverID:           users[0].id,
+				ReceiverID:           data.users[0].id,
 				InitiatorID:          uuid.Nil,
 				SenderBalanceAfter:   nil,
 				ReceiverBalanceAfter: 123,
@@ -629,6 +663,8 @@ func TestLogTransaction(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -653,15 +689,16 @@ func TestLogTransaction(t *testing.T) {
 func TestGetUserID(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
-
-	r, _, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -672,8 +709,8 @@ func TestGetUserID(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			username:  users[0].username,
-			want:      users[0].id,
+			username:  data.users[0].username,
+			want:      data.users[0].id,
 			wantError: nil,
 		}, {
 			name:      "user does not exist",
@@ -685,6 +722,8 @@ func TestGetUserID(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -702,15 +741,17 @@ func TestGetUserID(t *testing.T) {
 func TestGetUsername(t *testing.T) {
 	t.Parallel()
 
-	users := []user{
-		{
-			id:           uuid.New(),
-			username:     "test_user",
-			passwordHash: defaultPasswordHash,
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
 		},
 	}
 
-	r, _, teardown := setupTestDB(t, users)
+	r, db, teardown := setupTestDB(t, data)
 	defer teardown()
 
 	tests := []struct {
@@ -721,8 +762,8 @@ func TestGetUsername(t *testing.T) {
 	}{
 		{
 			name:      "happy path",
-			id:        users[0].id,
-			want:      users[0].username,
+			id:        data.users[0].id,
+			want:      data.users[0].username,
 			wantError: nil,
 		}, {
 			name:      "user does not exist",
@@ -734,6 +775,8 @@ func TestGetUsername(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
 			q := r.NewSingleQuery()
 			require.NotNil(t, q)
 
@@ -749,7 +792,116 @@ func TestGetUsername(t *testing.T) {
 	}
 }
 
-func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
+func TestGetTransactionCount(t *testing.T) {
+	t.Parallel()
+
+	data := dbData{
+		users: []user{
+			{
+				id:           uuid.New(),
+				username:     "test_user",
+				passwordHash: defaultPasswordHash,
+			},
+			{
+				id:           uuid.New(),
+				username:     "test_user2",
+				passwordHash: defaultPasswordHash,
+			},
+			{
+				id:           uuid.New(),
+				username:     "test_user3",
+				passwordHash: defaultPasswordHash,
+			},
+			{
+				id:           uuid.New(),
+				username:     "no_transactions_user",
+				passwordHash: defaultPasswordHash,
+			},
+		},
+	}
+
+	data.logs = []models.Transaction{
+		{
+			SenderID:             &data.users[0].id,
+			ReceiverID:           data.users[1].id,
+			InitiatorID:          data.users[2].id,
+			SenderBalanceAfter:   nil,
+			ReceiverBalanceAfter: 0,
+			Currency:             "gbscoin",
+			Amount:               67,
+			Fee:                  nil,
+		},
+		{
+			SenderID:             &data.users[1].id,
+			ReceiverID:           data.users[0].id,
+			InitiatorID:          data.users[0].id,
+			SenderBalanceAfter:   nil,
+			ReceiverBalanceAfter: 0,
+			Currency:             "gbscoin",
+			Amount:               67,
+			Fee:                  nil,
+		},
+	}
+
+	r, db, teardown := setupTestDB(t, data)
+	defer teardown()
+
+	tests := []struct {
+		name      string
+		id        uuid.UUID
+		want      int64
+		wantError error
+	}{
+		{
+			name:      "happy path 1",
+			id:        data.users[0].id,
+			want:      2,
+			wantError: nil,
+		},
+		{
+			name:      "happy path 2",
+			id:        data.users[1].id,
+			want:      2,
+			wantError: nil,
+		},
+		{
+			name:      "happy path 3",
+			id:        data.users[2].id,
+			want:      1,
+			wantError: nil,
+		},
+		{
+			name:      "user with no transactions",
+			id:        data.users[3].id,
+			want:      0,
+			wantError: nil,
+		}, {
+			name:      "user does not exist",
+			id:        uuid.Nil,
+			want:      0,
+			wantError: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resetDatabase(t, db, data)
+
+			q := r.NewSingleQuery()
+			require.NotNil(t, q)
+
+			amount, err := r.GetTransactionCount(q, test.id)
+			if test.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.IsType(t, test.wantError, err)
+			}
+			assert.Equal(t, test.want, amount)
+		})
+	}
+}
+
+func setupTestDB(t *testing.T, data dbData) (Repository, *sql.DB, func()) {
 	t.Helper()
 
 	r, db, dbName, err := createEmptyTestRepository(t)
@@ -757,10 +909,8 @@ func setupTestDB(t *testing.T, users []user) (Repository, *sql.DB, func()) {
 	require.NotEmpty(t, dbName)
 	require.NotNil(t, r)
 
-	if len(users) > 0 {
-		err = insertUsersInMockDB(users, db)
-		require.NoError(t, err)
-	}
+	err = insertDataInMockDB(data, db)
+	require.NoError(t, err)
 
 	teardown := func() {
 		err := closeDBByName(db, dbName, r)
@@ -812,8 +962,8 @@ func closeDBByName(testDB *sql.DB, testDBName string, testRepository Repository)
 	return err
 }
 
-func insertUsersInMockDB(users []user, testDB *sql.DB) error {
-	for _, u := range users {
+func insertDataInMockDB(data dbData, testDB *sql.DB) error {
+	for _, u := range data.users {
 		_, err := testDB.Exec(
 			`INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)`,
 			u.id, u.username, u.passwordHash,
@@ -837,5 +987,23 @@ func insertUsersInMockDB(users []user, testDB *sql.DB) error {
 		}
 	}
 
+	for _, log := range data.logs {
+		id := uuid.New()
+		_, err := testDB.Exec("INSERT INTO transaction_logs(id, sender_id, receiver_id, initiator_id, sender_balance_after, receiver_balance_after, currency, amount, fee) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)", id, log.SenderID, log.ReceiverID, log.InitiatorID, log.SenderBalanceAfter, log.ReceiverBalanceAfter, log.Currency, log.Amount, log.Fee)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func resetDatabase(t *testing.T, db *sql.DB, data dbData) {
+	t.Helper()
+
+	_, err := db.Exec("TRUNCATE TABLE users, balances, user_permission, transaction_logs, refresh_tokens RESTART IDENTITY CASCADE")
+	require.NoError(t, err)
+
+	err = insertDataInMockDB(data, db)
+	require.NoError(t, err)
 }
